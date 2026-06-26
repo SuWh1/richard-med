@@ -78,11 +78,10 @@ still lets us tell the data-quality / buyability story without building the full
 **Never cut:** source proof, freshness badges, price cards, the 2 stable sources,
 Source Health KPIs. **Invitro** is optional, only if it's stable by mid-build.
 
-**Role split:**
-- **Person A — Data/Backend:** DB model, catalog importer, KDL + DOQ adapters,
-  normalization waterfall, search/compare/map-pins API, `parse_runs`/`source_health`.
-- **Person B — Frontend:** home/search, result cards + Price Passport, compare table,
-  Leaflet map + popups + list sync, light admin page, Russian copy.
+**How we work: together, not split.** No fixed backend/frontend lanes. We build the
+project as one team, top to bottom, taking tasks off the shared build order (§13) in
+sequence — both of us across the whole stack. The API contract (§11) is the seam we agree
+on early so features connect cleanly, but ownership is shared, not divided.
 
 ## 5. Judging-weight strategy
 
