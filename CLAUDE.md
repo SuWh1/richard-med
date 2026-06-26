@@ -67,8 +67,8 @@ still lets us tell the data-quality / buyability story without building the full
 |---|---|
 | Search + autocomplete over the 1,281-service catalog | Email price alerts → waitlist button only |
 | Price-hero result cards: price, freshness, source proof | Full price-history chart → schema only + "changed/not changed" |
-| **Price Passport** modal | Invitro/Helix parsers → "planned source," not demo-critical |
-| **2 guaranteed sources: KDL Olymp (labs + branches) + DOQ (visits)** | Distance/geolocation sort → city filter + map pins only |
+| **Price Passport** modal | Any expansion source that's unstable near demo → cut from the *live* run (still seeded) |
+| **KDL Olymp (labs + branches) + DOQ (visits)** built solid first, **then expand to 4–5 sources** | Distance/geolocation sort → city filter + map pins only |
 | Best-Value + Cheapest sort | Clinic branch editor, CSV export, anomaly UI |
 | Compare table (top 3) | Semantic/LLM matching → optional; exact+alias+fuzzy is enough |
 | Leaflet map: price pins, popup, list↔map sync | Unmatched-queue editing UI → queue exists in DB, no rich UI |
@@ -93,8 +93,9 @@ on early so features connect cleanly, but ownership is shared, not divided.
 | Market coverage | 15% | 2 stable sources, Astana + Almaty cities |
 | Extra features | 15% | Map, compare, price-history skeleton, alerts waitlist |
 
-**Scoreboard targets:** ≥1,200 normalized services (we import 1,281), 2 stable sources,
-300+ price items if stable / 120+ minimum demo seed, Astana + Almaty, <1s search.
+**Scoreboard targets:** ≥1,200 normalized services (we import 1,281), **≥3 sources required
+(brief floor) / 4–5 target**, 300+ price items if stable / 120+ minimum demo seed,
+Astana + Almaty, <1s search.
 
 ## 6. Tech stack
 
@@ -203,6 +204,15 @@ For step (a):
 | P1 optional | Invitro KZ | `invitro.kz` | Only if stable by mid-build (dynamic → Playwright) |
 | Support | Leaflet + OSM | `leafletjs.com` | Map display |
 | Future only | 2GIS | `dev.2gis.com` | Licensed — route deep-links now, integration later |
+
+### Source rollout & the ≥3 floor
+The brief requires **≥3 sources**. KDL and DOQ are 2 **distinct domains** (KDL's `/pricelist`
+and `/cabinets` are the *same* source — branches are map metadata, not a 2nd price source). So:
+1. **Build KDL + DOQ solid first** (demo-critical, polished).
+2. **Add a 3rd distinct domain** to clear the floor — pick the easiest of Invitro / Helix /
+   Medel / MCK / Aksai in the source spike. This is **required**, not optional.
+3. **Expand toward 4–5** sources for coverage points; each extra is bonus.
+4. Any source that's flaky near demo time stays **seeded only** — never in the live run.
 
 **Adapter contract** (`app/scrapers`): `fetch(city) → RawDocument[]`,
 `parse(raw_doc) → RawPriceItem[]` (**no DB writes in parse**), `clean(raw_item)`,
