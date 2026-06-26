@@ -103,9 +103,9 @@ Source Health KPIs. **Invitro** is optional, only if it's stable by mid-build.
 |---|---|
 | Frontend | Vite + React 19 + TypeScript + Tailwind CSS v4 |
 | Backend | FastAPI + SQLAlchemy 2.0 + Pydantic |
-| Database | PostgreSQL 16 (full-text + `pg_trgm` for fuzzy search) |
+| Database | PostgreSQL 16 + **pgvector** (semantic search) + `pg_trgm`/full-text (lexical) — image `pgvector/pgvector:pg16` |
 | Parsing | Python adapters (`requests`/`httpx` + BeautifulSoup; Playwright only if needed) |
-| Matching | RapidFuzz (token_set_ratio) |
+| Matching | RapidFuzz (fuzzy) + **multilingual embeddings** (e.g. `multilingual-e5`, local/no-API) for semantic |
 | Map | Leaflet + OpenStreetMap tiles (self-stored coordinates) |
 
 ## 7. Repository layout
@@ -140,7 +140,7 @@ columns** (they had broken `#REF!` cells; use `Services_Clean.service_key`).
 |---|---|---|
 | `clinics` | id, name, website_url, source_name | Clinic brand (KDL Olymp, Invitro, DOQ clinic) |
 | `clinic_branches` | id, clinic_id, city, address, lat, lng, phone, working_hours | Location for map/route (coords seedable for demo) |
-| `services` | id, name_ru, category, specialty, tarificatr_code | Normalized catalog (imported from `Services_Clean`) |
+| `services` | id, name_ru, category, specialty, tarificatr_code, **embedding** (pgvector) | Normalized catalog (imported from `Services_Clean`); embedded once at import |
 | `service_aliases` | id, service_id, alias, source, confidence | Synonyms + learned aliases — drives autocomplete & match |
 | `raw_documents` | id, source_name, source_url, content_hash, raw_html, fetched_at, status_code | Raw page evidence (kept ≥90 days) |
 | `raw_price_items` | id, raw_document_id, clinic_raw, service_name_raw, price_raw, duration_raw, metadata_json | Raw extracted rows pre-normalization |
@@ -153,8 +153,9 @@ columns** (they had broken `#REF!` cells; use `Services_Clean.service_key`).
 **Category enum (4 values):** `лаборатория`, `приём врача`, `диагностика`, `процедура`.
 
 **Indexes:** GIN/full-text on `services.name_ru` + aliases; `pg_trgm` for fuzzy;
+**HNSW (pgvector)** on `services.embedding` for semantic nearest-neighbor;
 `clinic_service_prices(service_id, city, price_kzt, parsed_at)` partial where `is_active`;
-unique `raw_documents(source_url, content_hash)`.
+unique `raw_documents(source_url, content_hash)`. First migration runs `CREATE EXTENSION vector;`.
 
 ## 9. Normalization — the catalog & match waterfall
 
@@ -176,8 +177,22 @@ tarificatr_code | category | import_note | suggested_alias_seed`.
 2. Exact match on cleaned `name_ru` → confidence 1.00.
 3. Alias match via `service_aliases` → 0.95–1.00.
 4. Fuzzy (RapidFuzz token_set_ratio): ≥0.88 auto-match, 0.75–0.88 suggest.
-5. Semantic/LLM rerank — **optional, never a dependency.**
+5. **Semantic (pgvector):** embed the raw name, nearest-neighbor against `services.embedding`,
+   accept above a cosine threshold. Runs **offline in the parser pipeline**, never in the user path.
 6. Below threshold → `unmatched_services` queue; once an operator matches, save the alias.
+
+### User-facing search = hybrid (lexical first, vector fallback)
+A user search is two steps: **(a) resolve the typed query → a catalog service, (b) fetch prices**
+by `service_id` (a plain keyed lookup, never vectors).
+
+For step (a):
+- **Autocomplete-as-you-type → lexical only.** Postgres `pg_trgm` + full-text over `name_ru` +
+  `service_aliases`. Instant, prefix-aware, deterministic. **Never embed per keystroke.**
+- **On submit with no good lexical hit → semantic fallback.** Embed the query **once**, run a
+  pgvector nearest-neighbor against the catalog (e.g. "кровь на сахар" → `Глюкоза`). Return the
+  best service + confidence; still below threshold → "did you mean…?", never a silent wrong match.
+- This stays within Rule 1: embedding runs in **our** backend (local model) against **our** DB —
+  no third-party fetch during search.
 
 ## 10. Data sources
 
@@ -195,6 +210,14 @@ tarificatr_code | category | import_note | suggested_alias_seed`.
 `identity()`, `test_snapshot()` (parse a saved HTML fixture → expected row count + sample
 prices). Pipeline: config → fetch → raw save → extract → validate → normalize → upsert/dedup
 → health log → publish.
+
+### Fetch cadence
+- **Production:** once per day per source, **off-peak** (nightly cron/APScheduler), with polite
+  per-request delays. Satisfies the brief ("не реже 1 раза в сутки") and keeps prices in the
+  green <7-day band. Prices change slowly — daily is plenty; more often just risks blocks.
+- **Manual trigger:** admin **"Run Parser"** button hits the same pipeline on demand.
+- **During the hackathon:** fetch only a few times to seed the DB + save raw snapshots; the
+  **demo runs entirely from the seeded DB + cached snapshots** — never a live third-party fetch.
 
 ## 11. API surface
 
