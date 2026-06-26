@@ -4,13 +4,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    PROJECT_NAME: str = "MedServicePrice.kz"
+    PROJECT_NAME: str = "Richard Med"
     API_V1_PREFIX: str = "/api/v1"
     BACKEND_CORS_ORIGINS: str = "http://localhost:5173"
 
-    POSTGRES_USER: str = "medtech"
-    POSTGRES_PASSWORD: str = "medtech"
-    POSTGRES_DB: str = "medtech"
+    POSTGRES_USER: str = "richard_med"
+    POSTGRES_PASSWORD: str = "richard_med"
+    POSTGRES_DB: str = "richard_med"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
 

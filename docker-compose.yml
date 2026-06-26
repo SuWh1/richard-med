@@ -1,18 +1,18 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: medtech-db
+    container_name: richard-med-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-medtech}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medtech}
-      POSTGRES_DB: ${POSTGRES_DB:-medtech}
+      POSTGRES_USER: ${POSTGRES_USER:-richard_med}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-richard_med}
+      POSTGRES_DB: ${POSTGRES_DB:-richard_med}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medtech}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-richard_med}"]
       interval: 10s
       timeout: 5s
       retries: 5

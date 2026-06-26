@@ -1,15 +1,15 @@
-# MedServicePrice.kz
+# Richard Med
 
 Aggregator and price-comparison platform for medical services in Kazakhstan —
 "Aviasales for medicine." Scrapes public clinic price lists, normalizes service
 names against a single catalog, and lets users search and compare prices.
 
-> Hackathon 2025 — Case 1 (MedPrice). Full spec in [`docs/`](./docs).
+> Hackathon 2025 — Case 1 (MedPrice / MedServicePrice.kz). Full spec in [`docs/`](./docs).
 
 ## Repository layout
 
 ```
-medtech/
+richard-med/
 ├── backend/     FastAPI + PostgreSQL — API, scrapers, normalization
 ├── frontend/    Vite + React + TypeScript + Tailwind — search & compare UI
 ├── docs/        Case spec, service catalog, architecture notes

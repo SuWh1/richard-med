@@ -1,4 +1,4 @@
-# Frontend — MedServicePrice.kz
+# Frontend — Richard Med
 
 Vite + React + TypeScript + Tailwind CSS (v4).
 

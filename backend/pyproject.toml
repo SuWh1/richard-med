@@ -1,7 +1,7 @@
 [project]
-name = "medtech-backend"
+name = "richard-med-backend"
 version = "0.1.0"
-description = "MedServicePrice.kz — FastAPI backend"
+description = "Richard Med — FastAPI backend"
 requires-python = ">=3.11"
 
 [tool.ruff]

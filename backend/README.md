@@ -1,4 +1,4 @@
-# Backend — MedServicePrice.kz
+# Backend — Richard Med
 
 FastAPI + SQLAlchemy + PostgreSQL.
 
