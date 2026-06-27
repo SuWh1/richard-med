@@ -39,11 +39,12 @@ def _make_clinic(session, name, *, branches=1):
     return clinic, made
 
 
-def _price(session, clinic, branch, service_id, *, price, age_days=1):
+def _price(session, clinic, branch, service_id, *, price, age_days=1, city="Астана"):
     row = ClinicServicePrice(
         clinic_id=clinic.id,
         branch_id=branch.id if branch else None,
         service_id=service_id,
+        city=branch.city if branch else city,
         price_kzt=price,
         source_url="https://x.kz/p",
         parsed_at=datetime.now(UTC) - timedelta(days=age_days),

@@ -13,6 +13,9 @@ class ServiceCategory(str, enum.Enum):
     doctor_visit = "приём врача"
     diagnostic = "диагностика"
     procedure = "процедура"
+    # Internal quarantine for auto-grown rows the pipeline can't confidently classify.
+    # Hidden from default user search; surfaced in the admin catalog for review.
+    other = "прочее"
 
 
 def _category_values(enum_cls: type[enum.Enum]) -> list[str]:

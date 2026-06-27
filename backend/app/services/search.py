@@ -12,11 +12,16 @@ from app.models import (
     RawPriceItem,
     Service,
     ServiceAlias,
+    ServiceCategory,
 )
+from app.services.embeddings import get_embedder
+from app.services.normalization import ServiceMatcher
 
 FRESH_DAYS = 7
 STALE_DAYS = 30
 RESOLVE_FLOOR = 0.2
+# Quarantined catalog rows never appear in user-facing search/autocomplete/map.
+HIDDEN_CATEGORIES = (ServiceCategory.other,)
 
 # Best-Value weights (distance/duration omitted this round and renormalized — see §12).
 W_PRICE = 0.55
@@ -29,6 +34,7 @@ class Suggestion:
     id: int
     name_ru: str
     category: str
+    specialty: str | None
     score: float
     has_prices: bool
 
@@ -100,16 +106,31 @@ def available_cities(session: Session) -> list[City]:
     return [c for c in CITIES if c.name in present]
 
 
-def autocomplete(session: Session, q: str, limit: int = 10) -> list[Suggestion]:
-    """Lexical autocomplete over service names + aliases. Never embeds."""
+def autocomplete(
+    session: Session, q: str, limit: int = 10, category: str | None = None
+) -> list[Suggestion]:
+    """Lexical autocomplete over service names + aliases. Never embeds.
+
+    Prefix matches rank first, then services that have prices, then trigram score.
+    Duplicate `name_ru` rows (same service under different specialties) collapse to a
+    single suggestion — disambiguated by `specialty` — so the list never repeats a name.
+    """
     q = (q or "").strip()
     if len(q) < 2:
         return []
 
     pattern = f"%{q}%"
+    prefix = f"{q}%"
     name_sim = func.similarity(Service.name_ru, q)
     alias_sim = func.coalesce(func.max(func.similarity(ServiceAlias.alias, q)), 0.0)
     score = func.greatest(name_sim, alias_sim)
+    is_prefix = func.coalesce(
+        func.bool_or(
+            Service.name_ru.ilike(prefix)
+            | func.coalesce(ServiceAlias.alias.ilike(prefix), False)
+        ),
+        False,
+    )
     price_count = (
         select(func.count(ClinicServicePrice.id))
         .where(
@@ -120,24 +141,56 @@ def autocomplete(session: Session, q: str, limit: int = 10) -> list[Suggestion]:
         .scalar_subquery()
     )
 
-    stmt = (
+    filters = [
+        Service.category.not_in(HIDDEN_CATEGORIES),
+        or_(
+            Service.name_ru.ilike(pattern),
+            ServiceAlias.alias.ilike(pattern),
+            name_sim > RESOLVE_FLOOR,
+        ),
+    ]
+    if category:
+        try:
+            filters.append(Service.category == ServiceCategory(category))
+        except ValueError:
+            pass  # invalid category → endpoint rejects it; ignore defensively here
+
+    grouped = (
         select(
-            Service.id,
-            Service.name_ru,
-            Service.category,
+            Service.id.label("id"),
+            Service.name_ru.label("name_ru"),
+            Service.category.label("category"),
+            Service.specialty.label("specialty"),
             score.label("score"),
             price_count.label("price_count"),
+            is_prefix.label("is_prefix"),
         )
         .outerjoin(ServiceAlias, ServiceAlias.service_id == Service.id)
-        .where(
-            or_(
-                Service.name_ru.ilike(pattern),
-                ServiceAlias.alias.ilike(pattern),
-                name_sim > RESOLVE_FLOOR,
-            )
-        )
+        .where(*filters)
         .group_by(Service.id)
-        .order_by((price_count > 0).desc(), score.desc(), Service.name_ru)
+        .subquery()
+    )
+    # Keep the strongest row per name_ru (priced > prefix > score), then re-rank by
+    # relevance across names and cap to `limit`.
+    deduped = (
+        select(grouped)
+        .distinct(grouped.c.name_ru)
+        .order_by(
+            grouped.c.name_ru,
+            (grouped.c.price_count > 0).desc(),
+            grouped.c.is_prefix.desc(),
+            grouped.c.score.desc(),
+        )
+        .subquery()
+    )
+    stmt = (
+        select(deduped)
+        .order_by(
+            deduped.c.is_prefix.desc(),
+            (deduped.c.price_count > 0).desc(),
+            deduped.c.score.desc(),
+            deduped.c.name_ru,
+        )
         .limit(limit)
     )
 
@@ -146,6 +199,7 @@ def autocomplete(session: Session, q: str, limit: int = 10) -> list[Suggestion]:
             id=row.id,
             name_ru=row.name_ru,
             category=row.category.value,
+            specialty=row.specialty,
             score=round(float(row.score), 3),
             has_prices=row.price_count > 0,
         )
@@ -153,12 +207,94 @@ def autocomplete(session: Session, q: str, limit: int = 10) -> list[Suggestion]:
     ]
 
 
-def resolve_query(session: Session, q: str) -> tuple[Suggestion | None, list[Suggestion]]:
-    """Resolve a typed query to the best catalog service plus alternatives (lexical only)."""
-    candidates = autocomplete(session, q, limit=8)
-    if not candidates:
-        return None, []
-    return candidates[0], candidates
+_USE_DEFAULT_EMBEDDER = object()
+# Lexical methods we trust enough to resolve directly to a price view.
+_CONFIDENT_METHODS = {"exact", "alias", "fuzzy"}
+
+
+def _has_active_prices(session: Session, service_id: int) -> bool:
+    return bool(
+        session.scalar(
+            select(func.count(ClinicServicePrice.id)).where(
+                ClinicServicePrice.service_id == service_id,
+                ClinicServicePrice.is_active.is_(True),
+            )
+        )
+    )
+
+
+def _suggestion_for(
+    session: Session, service_id: int, score: float
+) -> Suggestion | None:
+    svc = session.get(Service, service_id)
+    if svc is None:
+        return None
+    return Suggestion(
+        id=svc.id,
+        name_ru=svc.name_ru,
+        category=svc.category.value,
+        specialty=svc.specialty,
+        score=round(float(score), 3),
+        has_prices=_has_active_prices(session, service_id),
+    )
+
+
+def _canonical_service_id(session: Session, service_id: int) -> int:
+    """Among services sharing this name_ru, the one with the most active prices.
+
+    Duplicate catalog rows (same name, different specialty) fragment prices; resolving
+    onto the best-covered sibling avoids landing on an empty duplicate. Prices are not
+    merged across siblings — only one service's prices are shown.
+    """
+    name = session.scalar(select(Service.name_ru).where(Service.id == service_id))
+    if name is None:
+        return service_id
+    rows = session.execute(
+        select(Service.id, func.count(ClinicServicePrice.id).label("n"))
+        .outerjoin(
+            ClinicServicePrice,
+            (ClinicServicePrice.service_id == Service.id)
+            & (ClinicServicePrice.is_active.is_(True)),
+        )
+        .where(Service.name_ru == name)
+        .group_by(Service.id)
+        .order_by(func.count(ClinicServicePrice.id).desc(), Service.id)
+    ).all()
+    return rows[0][0] if rows else service_id
+
+
+def resolve_query(
+    session: Session,
+    q: str,
+    category: str | None = None,
+    embedder=_USE_DEFAULT_EMBEDDER,
+) -> tuple[Suggestion | None, list[Suggestion]]:
+    """Resolve a typed query to the best catalog service plus alternatives.
+
+    Lexical exact/alias/fuzzy matches resolve directly. A semantic (embedding) hit is
+    only ever offered as a *suggestion*, never silently resolved — generic embeddings
+    can't reliably separate near-identical lab analytes, so a human confirms (§9).
+    Below the lexical floor we resolve nothing and return "did you mean" suggestions.
+    """
+    if embedder is _USE_DEFAULT_EMBEDDER:
+        embedder = get_embedder()
+
+    suggestions = autocomplete(session, q, limit=8, category=category)
+    result = ServiceMatcher(session, embedder=embedder).match(q)
+
+    if result.service_id is not None and result.method in _CONFIDENT_METHODS:
+        sid = _canonical_service_id(session, result.service_id)
+        resolved = _suggestion_for(session, sid, result.confidence)
+        if resolved is not None and category and resolved.category != category:
+            return None, suggestions
+        return resolved, suggestions
+
+    if result.method == "semantic" and result.service_id is not None:
+        semantic = _suggestion_for(session, result.service_id, result.confidence)
+        if semantic is not None and (not category or semantic.category == category):
+            suggestions = [semantic] + [s for s in suggestions if s.id != semantic.id]
+
+    return None, suggestions
 
 
 def prices_for_service(
@@ -289,6 +425,7 @@ def featured_cards(session: Session, limit: int = 6) -> list[PriceCard]:
             ClinicServicePrice.is_active.is_(True),
             age_days <= STALE_DAYS,
             ClinicServicePrice.service_id.in_(ranked.keys()),
+            Service.category.not_in(HIDDEN_CATEGORIES),
         )
         .order_by(
             ClinicServicePrice.service_id,

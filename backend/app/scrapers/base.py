@@ -88,3 +88,8 @@ class BaseSourceAdapter(ABC):
     def brand_name(self) -> str | None:
         """Clinic brand whose branches `fetch_branches` returns; None for multi-clinic sources."""
         return None
+
+    def default_category(self) -> str | None:
+        """Dominant catalog category for this source, used as the auto-grow fallback when
+        keyword inference is inconclusive. None → genuinely unknown source → quarantine."""
+        return None

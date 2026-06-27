@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app.models import (
     ClinicServicePrice,
     ParseRun,
@@ -21,6 +23,12 @@ from app.services.pipeline import _parse_duration, run_source
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "doq_doctors_terapevt_astana.json"
 _KDL_FIXTURE = Path(__file__).parent / "fixtures" / "kdl_analysis_data_astana.json"
+
+
+def test_should_reject_a_run_without_a_city(db_session):
+    # A NULL/empty city breaks the active-price dedup key — fail loudly instead.
+    with pytest.raises(ValueError, match="city"):
+        run_source(db_session, "kdl_olymp", "", adapter=_StubKdlAdapter())
 
 
 def test_should_parse_single_value_duration():

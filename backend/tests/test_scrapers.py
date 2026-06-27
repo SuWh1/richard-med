@@ -1,6 +1,47 @@
-from app.scrapers.doq import DoqAdapter
+from urllib.parse import parse_qs, urlparse
+
+import httpx
+
+from app.scrapers.doq import SPECIALIZATIONS, DoqAdapter
+from app.scrapers.helix import HelixAdapter
+from app.scrapers.invitro import InvitroAdapter
 from app.scrapers.kdl_olymp import KdlOlympAdapter
 from app.scrapers.registry import available_sources, get_adapter
+
+
+class _FakeResponse:
+    text = '{"results": [], "next": null}'
+    status_code = 200
+
+    def json(self) -> dict:
+        return {"results": [], "next": None}
+
+
+class _FlakyClient:
+    """Raises for chosen specialization ids; serves an empty page otherwise."""
+
+    def __init__(self, fail_service_ids: set[int]):
+        self._fail = fail_service_ids
+
+    def get(self, url: str) -> _FakeResponse:
+        service_id = int(parse_qs(urlparse(url).query)["service"][0])
+        if service_id in self._fail:
+            raise httpx.ConnectError("boom")
+        return _FakeResponse()
+
+    def close(self) -> None:
+        pass
+
+
+def test_should_isolate_doq_fetch_failures_per_specialization():
+    # The first specialization's request fails; the other eight must still be fetched.
+    failing = next(iter(SPECIALIZATIONS))
+    adapter = DoqAdapter(client=_FlakyClient(fail_service_ids={failing}))
+
+    docs = adapter.fetch("Астана")
+
+    assert len(docs) == len(SPECIALIZATIONS) - 1
+    assert all(f"service={failing}&" not in d.source_url for d in docs)
 
 
 def test_should_parse_kdl_json_rows():
@@ -73,6 +114,61 @@ def test_should_have_no_branches_for_doq_by_default():
 
 
 def test_should_resolve_known_adapters_from_registry():
-    assert set(available_sources()) == {"kdl_olymp", "doq"}
+    assert set(available_sources()) == {"kdl_olymp", "doq", "invitro", "helix"}
     assert get_adapter("kdl_olymp").identity() == "kdl_olymp"
     assert get_adapter("doq").identity() == "doq"
+    assert get_adapter("invitro").identity() == "invitro"
+    assert get_adapter("helix").identity() == "helix"
+
+
+def test_should_parse_helix_cards_with_name_and_price():
+    result = HelixAdapter().test_snapshot()
+    # 4 priced cards in the fixture; the price-less decoy is skipped.
+    assert result.item_count == 4
+    cbc = next(i for i in result.sample_items if "клинический анализ крови" in i.service_name_raw.lower())
+    assert cbc.price_raw == "1900"
+    assert cbc.clinic_raw == "Хеликс"
+    assert cbc.metadata["code"] == "02-005"
+
+
+def test_should_build_browsable_almaty_helix_source_urls():
+    items = HelixAdapter().test_snapshot().sample_items
+    # Links must carry the /almaty prefix so the clicked page shows Almaty (₸) prices.
+    assert all(i.source_url.startswith("https://helix.ru/almaty/catalog/item/") for i in items)
+
+
+def test_should_strip_helix_price_to_digits():
+    items = HelixAdapter().test_snapshot().sample_items
+    assert all(i.price_raw.isdigit() and int(i.price_raw) > 0 for i in items)
+
+
+def test_should_have_no_helix_data_for_unsupported_city():
+    assert HelixAdapter().fetch("Астана") == []
+
+
+def test_should_parse_invitro_product_anchors():
+    result = InvitroAdapter().test_snapshot()
+    # 8 priced anchors in the fixture; the zero-price and the price-less decoys are skipped.
+    assert result.item_count == 8
+    cbc = next(i for i in result.sample_items if "общий анализ крови" in i.service_name_raw.lower())
+    assert cbc.price_raw == "520"
+    assert cbc.clinic_raw == "Invitro"
+
+
+def test_should_build_browsable_invitro_source_urls():
+    items = InvitroAdapter().test_snapshot().sample_items
+    assert all(i.source_url.startswith("https://invitro.kz/analizes/for-doctors/") for i in items)
+
+
+def test_should_strip_invitro_english_gloss_and_price_to_digits():
+    items = InvitroAdapter().test_snapshot().sample_items
+    assert all(i.price_raw.isdigit() for i in items)
+    # The trailing English gloss "(Complete Blood Count, CBC)" is dropped; the legitimate
+    # Russian qualifier "(без лейкоцитарной формулы и СОЭ)" is kept.
+    cbc = next(i for i in items if "общий анализ крови" in i.service_name_raw.lower())
+    assert "CBC" not in cbc.service_name_raw and "Complete Blood Count" not in cbc.service_name_raw
+    assert cbc.service_name_raw.endswith("СОЭ)")
+
+
+def test_should_have_no_invitro_data_for_unsupported_city():
+    assert InvitroAdapter().fetch("Караганда") == []

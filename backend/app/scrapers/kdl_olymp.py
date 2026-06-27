@@ -132,6 +132,9 @@ class KdlOlympAdapter(BaseSourceAdapter):
     def brand_name(self) -> str:
         return CLINIC_NAME
 
+    def default_category(self) -> str:
+        return "лаборатория"  # KDL is a lab; uncategorized analytes are lab tests
+
     def fetch_branches(self, city: str) -> list[BranchHit]:
         city_id = kdl_city_id(city)
         if city_id is None:

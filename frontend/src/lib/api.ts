@@ -1,6 +1,8 @@
 import type {
   AnalyticsOverview,
   AnalyticsParams,
+  CatalogPage,
+  CatalogParams,
   CityInfo,
   ClinicDetail,
   ClinicServiceRow,
@@ -15,6 +17,8 @@ import type {
   ServicePriceStat,
   SourceHealth,
   Suggestion,
+  UnmatchedPage,
+  UnmatchedParams,
 } from "@/types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001/api/v1";
@@ -33,8 +37,8 @@ async function getJson<T>(path: string, params: Record<string, unknown>): Promis
   return response.json() as Promise<T>;
 }
 
-export function fetchSuggestions(q: string): Promise<Suggestion[]> {
-  return getJson<Suggestion[]>("/services", { q, limit: 8 });
+export function fetchSuggestions(q: string, category?: string): Promise<Suggestion[]> {
+  return getJson<Suggestion[]>("/services", { q, limit: 8, category });
 }
 
 export function fetchCities(): Promise<CityInfo[]> {
@@ -87,6 +91,14 @@ export function fetchAnalyticsOverview(
 
 export function fetchSourceHealth(): Promise<SourceHealth[]> {
   return getJson<SourceHealth[]>("/admin/source-health", {});
+}
+
+export function fetchCatalogServices(params: CatalogParams = {}): Promise<CatalogPage> {
+  return getJson<CatalogPage>("/admin/services", { ...params });
+}
+
+export function fetchUnmatched(params: UnmatchedParams = {}): Promise<UnmatchedPage> {
+  return getJson<UnmatchedPage>("/admin/unmatched", { ...params });
 }
 
 export function fetchParseRuns(limit = 20): Promise<ParseRunSummary[]> {

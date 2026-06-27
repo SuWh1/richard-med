@@ -12,9 +12,12 @@ router = APIRouter()
 def autocomplete_services(
     q: str = Query(..., min_length=2),
     limit: int = Query(10, ge=1, le=25),
+    category: str | None = Query(
+        None, pattern="^(лаборатория|приём врача|диагностика|процедура)$"
+    ),
     db: Session = Depends(get_db),
 ) -> list[Suggestion]:
-    return search.autocomplete(db, q, limit=limit)
+    return search.autocomplete(db, q, limit=limit, category=category)
 
 
 @router.get("/{service_id}/prices", response_model=list[PriceCard])

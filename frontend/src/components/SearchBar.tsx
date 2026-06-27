@@ -96,6 +96,9 @@ export function SearchBar({
                 <span className="flex items-center gap-3">
                   <Search className="h-4 w-4 text-faintest" />
                   <span className="text-sm text-foreground">{s.name_ru}</span>
+                  {s.specialty && (
+                    <span className="text-xs text-[#CBD5E1]">· {s.specialty}</span>
+                  )}
                 </span>
                 <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
                   {s.has_prices ? s.category : "нет цен"}

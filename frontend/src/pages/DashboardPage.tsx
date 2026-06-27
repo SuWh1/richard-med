@@ -29,6 +29,8 @@ import { SourceHealthCard } from "@/components/SourceHealthCard";
 import { FreshnessBadge } from "@/components/FreshnessBadge";
 import { AnimatedList } from "@/components/AnimatedList";
 import { AppShell } from "@/components/AppShell";
+import { ServicesTable } from "@/components/ServicesTable";
+import { UnmatchedQueue } from "@/components/UnmatchedQueue";
 
 const CITIES = ["Астана", "Алматы"];
 
@@ -188,6 +190,14 @@ export function DashboardPage() {
         <RunHistory runs={runs} selectedRun={selectedRun} onSelect={setSelectedRun} />
         <RunDetailPanel runId={selectedRun} />
       </div>
+
+      <section className="mt-8">
+        <ServicesTable busy={anyBusy} />
+      </section>
+
+      <section className="mt-8">
+        <UnmatchedQueue busy={anyBusy} />
+      </section>
       </div>
     </AppShell>
   );

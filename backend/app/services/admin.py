@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -11,13 +11,19 @@ from app.models import (
     RawDocument,
     RawPriceItem,
     Service,
+    ServiceAlias,
+    ServiceCategory,
     UnmatchedService,
 )
 from app.schemas.admin import (
+    CatalogPage,
+    CatalogServiceRow,
     ParsedPriceSample,
     ParseRunDetail,
     ParseRunSummary,
     SourceHealth,
+    UnmatchedPage,
+    UnmatchedRow,
 )
 from app.scrapers.registry import available_sources
 
@@ -108,6 +114,114 @@ def source_health(session: Session) -> list[SourceHealth]:
             )
         )
     return out
+
+
+def catalog_services(
+    session: Session,
+    q: str | None = None,
+    category: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> CatalogPage:
+    """Live view of the catalog: each service with its alias + active-price counts.
+
+    `origin` distinguishes seeded/imported entries from ones the pipeline grew from
+    real source data (their `service_key` is hashed with an `auto-` prefix)."""
+    alias_counts = (
+        select(ServiceAlias.service_id, func.count().label("n"))
+        .group_by(ServiceAlias.service_id)
+        .subquery()
+    )
+    price_counts = (
+        select(ClinicServicePrice.service_id, func.count().label("n"))
+        .where(ClinicServicePrice.is_active.is_(True))
+        .group_by(ClinicServicePrice.service_id)
+        .subquery()
+    )
+
+    filters = []
+    if q:
+        filters.append(Service.name_ru.ilike(f"%{q.strip()}%"))
+    if category:
+        try:
+            filters.append(Service.category == ServiceCategory(category))
+        except ValueError:
+            pass  # unknown category → no extra filter, the table just shows everything
+
+    total = session.scalar(
+        select(func.count()).select_from(Service).where(*filters)
+    )
+
+    rows = session.execute(
+        select(
+            Service.id,
+            Service.name_ru,
+            Service.category,
+            Service.service_key,
+            func.coalesce(alias_counts.c.n, 0),
+            func.coalesce(price_counts.c.n, 0),
+        )
+        .outerjoin(alias_counts, alias_counts.c.service_id == Service.id)
+        .outerjoin(price_counts, price_counts.c.service_id == Service.id)
+        .where(*filters)
+        .order_by(func.coalesce(price_counts.c.n, 0).desc(), Service.name_ru)
+        .limit(limit)
+        .offset(offset)
+    ).all()
+
+    items = [
+        CatalogServiceRow(
+            id=sid,
+            name_ru=name,
+            category=cat.value,
+            origin="auto" if key.startswith("auto-") else "catalog",
+            alias_count=aliases,
+            price_count=prices,
+        )
+        for sid, name, cat, key, aliases, prices in rows
+    ]
+    return CatalogPage(total=total or 0, items=items)
+
+
+def unmatched_queue(
+    session: Session,
+    status: str = "pending",
+    limit: int = 50,
+    offset: int = 0,
+) -> UnmatchedPage:
+    """The review queue: raw scraped names paired with their best catalog candidate.
+
+    These are the gray-zone matches the pipeline refused to auto-apply — an operator
+    (or the AI verifier) decides alias-vs-new. Highest confidence first."""
+    filters = []
+    if status:
+        filters.append(UnmatchedService.status == status)
+
+    total = session.scalar(
+        select(func.count()).select_from(UnmatchedService).where(*filters)
+    )
+
+    rows = session.execute(
+        select(UnmatchedService, Service.name_ru, Service.category)
+        .outerjoin(Service, Service.id == UnmatchedService.suggested_service_id)
+        .where(*filters)
+        .order_by(UnmatchedService.confidence.desc(), UnmatchedService.id)
+        .limit(limit)
+        .offset(offset)
+    ).all()
+
+    items = [
+        UnmatchedRow(
+            id=u.id,
+            raw_name=u.raw_name,
+            suggested_name=name,
+            suggested_category=cat.value if cat else None,
+            confidence=u.confidence,
+            status=u.status,
+        )
+        for u, name, cat in rows
+    ]
+    return UnmatchedPage(total=total or 0, items=items)
 
 
 def list_runs(session: Session, limit: int = 20) -> list[ParseRunSummary]:
