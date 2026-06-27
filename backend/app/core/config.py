@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     YANDEX_GEOCODER_API_KEY: str = ""
     YANDEX_GEOCODER_URL: str = "https://geocode-maps.yandex.ru/v1"
 
+    # LLM match verification (offline only — confirms semantic suggestions). Empty key disables it.
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
+    GEMINI_URL: str = "https://generativelanguage.googleapis.com/v1beta/models"
+
     @property
     def database_url(self) -> str:
         return (
