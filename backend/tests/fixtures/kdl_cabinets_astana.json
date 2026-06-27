@@ -1,0 +1,59 @@
+{
+  "data": [
+    {
+      "id": 699,
+      "slug": "procedurnyy-kabinet-test-1",
+      "is_active": 1,
+      "city_id": 98,
+      "longitude": "71.430411",
+      "latitude": "51.128207",
+      "phone": "+7 717 000 0001",
+      "translation": {
+        "title": "Процедурный кабинет \"Тест-1\"",
+        "address": "ул. Тестовая, 1"
+      },
+      "schedules": [
+        {
+          "type": "working_hours",
+          "weekday_start": "08:00",
+          "weekday_end": "16:00",
+          "saturday_start": "09:00",
+          "saturday_end": "13:00"
+        }
+      ]
+    },
+    {
+      "id": 700,
+      "slug": "procedurnyy-kabinet-test-2",
+      "is_active": 1,
+      "city_id": 98,
+      "longitude": "71.450000",
+      "latitude": "51.160000",
+      "phone": null,
+      "translation": {
+        "title": "Процедурный кабинет \"Тест-2\"",
+        "address": "ул. Тестовая, 2"
+      },
+      "schedules": [
+        {
+          "type": "working_hours",
+          "weekday_start": "08:00",
+          "weekday_end": "17:00",
+          "saturday_start": null,
+          "saturday_end": null
+        }
+      ]
+    },
+    {
+      "id": 701,
+      "slug": "no-coords",
+      "is_active": 1,
+      "city_id": 98,
+      "longitude": null,
+      "latitude": null,
+      "translation": { "title": "Без координат", "address": "ул. X" },
+      "schedules": []
+    }
+  ],
+  "_meta": { "totalCount": 3, "pageCount": 1, "currentPage": 1, "pageSize": 100 }
+}

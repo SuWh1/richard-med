@@ -126,14 +126,19 @@ def _upsert_price(
     method: str,
     duration_min: int | None,
     duration_max: int | None,
+    city: str,
     now: datetime,
 ) -> tuple[bool, int | None]:
-    """Insert or version a price. Returns (price_id_seen, existing_id_deactivated_or_none)."""
+    """Insert or version a price. Returns (price_id_seen, existing_id_deactivated_or_none).
+
+    Active prices are keyed by (clinic, service, city) — a chain's price is city-wide, and
+    its many collection points are plotted from `clinic_branches`, not per price.
+    """
     existing = session.scalars(
         select(ClinicServicePrice).where(
             ClinicServicePrice.clinic_id == clinic_id,
             ClinicServicePrice.service_id == service_id,
-            ClinicServicePrice.branch_id == branch_id,
+            ClinicServicePrice.city == city,
             ClinicServicePrice.is_active.is_(True),
         )
     ).first()
@@ -167,6 +172,7 @@ def _upsert_price(
         clinic_id=clinic_id,
         branch_id=branch_id,
         service_id=service_id,
+        city=city,
         raw_price_item_id=raw_item_id,
         price_kzt=price_kzt,
         duration_min=duration_min,
@@ -284,9 +290,15 @@ def run_source(
                 clinic = _get_or_create_clinic(
                     session, source_name, item.clinic_raw or source_name, None
                 )
-                branch = _get_or_create_branch(session, clinic.id, item.metadata or {}, city)
+                # Only attach a branch when the source gives a real location (e.g. DOQ).
+                # Chain price APIs (KDL) carry no per-price address — their points come
+                # from the offline branch sync into clinic_branches.
+                meta = item.metadata or {}
+                branch = None
+                if meta.get("address") or (meta.get("lat") and meta.get("lng")):
+                    branch = _get_or_create_branch(session, clinic.id, meta, city)
                 branch_id = branch.id if branch else None
-                key = (clinic.id, result.service_id, branch_id)
+                key = (clinic.id, result.service_id, city)
 
                 duration_min, duration_max = _parse_duration(item.duration_raw)
                 duplicate = run_prices.get(key)
@@ -315,6 +327,7 @@ def run_source(
                     method=result.method,
                     duration_min=duration_min,
                     duration_max=duration_max,
+                    city=city,
                     now=now,
                 )
                 seen_price_ids.add(price_id)
@@ -355,9 +368,10 @@ def _deactivate_stale(
     active = session.scalars(
         select(ClinicServicePrice).where(
             ClinicServicePrice.clinic_id.in_(clinic_ids),
+            ClinicServicePrice.city == city,
             ClinicServicePrice.is_active.is_(True),
         )
     ).all()
     for price in active:
-        if price.id not in seen_ids and (price.branch is None or price.branch.city == city):
+        if price.id not in seen_ids:
             price.is_active = False

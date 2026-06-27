@@ -48,6 +48,14 @@ class SearchResponse(BaseModel):
     count: int
 
 
+class CityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    lat: float
+    lng: float
+
+
 class MapPin(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

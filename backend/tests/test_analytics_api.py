@@ -19,7 +19,7 @@ def test_should_return_price_stats_with_valid_ranges():
 
 
 def test_should_aggregate_oak_across_multiple_clinics():
-    resp = client.get("/api/v1/analytics/price-stats")
+    resp = client.get("/api/v1/analytics/price-stats", params={"city": "Астана"})
     assert resp.status_code == 200
     oak = next((s for s in resp.json() if "ОАК" in s["service_name"]), None)
     assert oak is not None

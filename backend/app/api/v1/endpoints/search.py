@@ -5,10 +5,15 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.clinics import CompareResult
-from app.schemas.search import MapPin, PriceCard, SearchResponse
+from app.schemas.search import CityOut, MapPin, PriceCard, SearchResponse
 from app.services import clinics, search
 
 router = APIRouter()
+
+
+@router.get("/cities", response_model=list[CityOut])
+def list_cities(db: Session = Depends(get_db)) -> list[CityOut]:
+    return search.available_cities(db)
 
 
 def _parse_clinic_ids(clinic_ids: str) -> list[int]:

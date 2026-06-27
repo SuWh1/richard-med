@@ -186,6 +186,7 @@ def seed_demo(session: Session) -> dict:
                 clinic_id=clinics[source].id,
                 branch_id=branch.id,
                 service_id=result.service_id,
+                city=city,
                 raw_price_item_id=item.id,
                 price_kzt=price,
                 service_name_raw=raw_name,

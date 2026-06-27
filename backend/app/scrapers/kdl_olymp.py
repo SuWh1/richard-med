@@ -3,8 +3,10 @@ import re
 from pathlib import Path
 from urllib.parse import urlencode
 
+from app.core.cities import kdl_city_id, kdl_slug
 from app.scrapers.base import (
     BaseSourceAdapter,
+    BranchHit,
     RawDocument,
     RawPriceItem,
     SnapshotResult,
@@ -13,6 +15,7 @@ from app.scrapers.http import PoliteClient, content_hash
 
 BASE_URL = "https://kdlolymp.kz"
 API_URL = f"{BASE_URL}/api/analysis-data"
+BRANCHES_URL = f"{BASE_URL}/api/procedure-cabinet"
 CLINIC_NAME = "KDL Olymp"
 _FIXTURE = (
     Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "kdl_analysis_data_astana.json"
@@ -20,8 +23,20 @@ _FIXTURE = (
 
 # KDL's internal JSON price API. `per-page` counts categories (49 total), so one page
 # with per-page=100 returns the whole catalog. Public, unauthenticated, robots-clean.
-_CITY_SLUGS = {"Астана": "astana", "Алматы": "almaty"}
 _DIGITS = re.compile(r"\d+")
+
+
+def _working_hours(schedules: list | None) -> str | None:
+    for schedule in schedules or []:
+        if schedule.get("type") != "working_hours":
+            continue
+        parts = []
+        if schedule.get("weekday_start") and schedule.get("weekday_end"):
+            parts.append(f"Пн-Пт {schedule['weekday_start']}-{schedule['weekday_end']}")
+        if schedule.get("saturday_start") and schedule.get("saturday_end"):
+            parts.append(f"Сб {schedule['saturday_start']}-{schedule['saturday_end']}")
+        return ", ".join(parts) or None
+    return None
 
 
 def _duration_str(min_d: int | None, max_d: int | None) -> str | None:
@@ -46,7 +61,7 @@ class KdlOlympAdapter(BaseSourceAdapter):
         return f"{API_URL}?{urlencode(params)}"
 
     def fetch(self, city: str) -> list[RawDocument]:
-        slug = _CITY_SLUGS.get(city)
+        slug = kdl_slug(city)
         if slug is None:
             return []
         url = self._url(slug)
@@ -113,6 +128,44 @@ class KdlOlympAdapter(BaseSourceAdapter):
             duration_raw=raw_item.duration_raw,
             metadata=raw_item.metadata,
         )
+
+    def brand_name(self) -> str:
+        return CLINIC_NAME
+
+    def fetch_branches(self, city: str) -> list[BranchHit]:
+        city_id = kdl_city_id(city)
+        if city_id is None:
+            return []
+        url = f"{BRANCHES_URL}?lang=ru-RU&city_id={city_id}"
+        client = self._client or PoliteClient()
+        try:
+            response = client.get(url)
+        finally:
+            if self._client is None:
+                client.close()
+        return self.parse_branches(response.text, city)
+
+    def parse_branches(self, text: str, city: str) -> list[BranchHit]:
+        payload = json.loads(text)
+        hits: list[BranchHit] = []
+        for cabinet in payload.get("data", []):
+            lat, lng = cabinet.get("latitude"), cabinet.get("longitude")
+            if not lat or not lng:
+                continue
+            translation = cabinet.get("translation") or {}
+            hits.append(
+                BranchHit(
+                    external_id=str(cabinet.get("slug") or cabinet.get("id")),
+                    name=translation.get("title") or CLINIC_NAME,
+                    city=city,
+                    address=translation.get("address"),
+                    lat=float(lat),
+                    lng=float(lng),
+                    phone=cabinet.get("phone"),
+                    working_hours=_working_hours(cabinet.get("schedules")),
+                )
+            )
+        return hits
 
     def test_snapshot(self) -> SnapshotResult:
         text = _FIXTURE.read_text(encoding="utf-8")

@@ -35,6 +35,20 @@ class SnapshotResult:
     sample_items: list[RawPriceItem]
 
 
+@dataclass(frozen=True)
+class BranchHit:
+    """One physical collection point / clinic location, for the map."""
+
+    external_id: str  # stable source id (e.g. KDL cabinet slug) for dedup
+    name: str
+    city: str
+    address: str | None
+    lat: float | None
+    lng: float | None
+    phone: str | None
+    working_hours: str | None
+
+
 class BaseSourceAdapter(ABC):
     """One adapter per source domain. Adding a source must not touch the pipeline.
 
@@ -66,3 +80,11 @@ class BaseSourceAdapter(ABC):
     def test_snapshot(self) -> SnapshotResult:
         """Parse a saved HTML fixture and return counts + samples for regression tests."""
         raise NotImplementedError
+
+    def fetch_branches(self, city: str) -> list[BranchHit]:
+        """This clinic's physical points in a city. Default: none — override if available."""
+        return []
+
+    def brand_name(self) -> str | None:
+        """Clinic brand whose branches `fetch_branches` returns; None for multi-clinic sources."""
+        return None

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import ClinicBranch, ClinicServicePrice, Service
+from app.models import ClinicServicePrice, Service
 from app.models.catalog import ServiceCategory
 from app.services.search import STALE_DAYS
 
@@ -101,9 +101,7 @@ def service_price_stats(
     )
     stmt = _base_where(stmt, include_stale=include_stale)
     if city:
-        stmt = stmt.join(
-            ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id
-        ).where(ClinicBranch.city == city)
+        stmt = stmt.where(ClinicServicePrice.city == city)
     if category is not None:
         stmt = stmt.where(Service.category == category)
 
@@ -149,9 +147,7 @@ def category_overview(
     )
     cat_stmt = _base_where(cat_stmt, include_stale=include_stale)
     if city:
-        cat_stmt = cat_stmt.join(
-            ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id
-        ).where(ClinicBranch.city == city)
+        cat_stmt = cat_stmt.where(ClinicServicePrice.city == city)
 
     categories = [
         CategoryStat(
@@ -167,17 +163,17 @@ def category_overview(
 
     city_stmt = (
         select(
-            ClinicBranch.city,
+            ClinicServicePrice.city,
             func.count(ClinicServicePrice.id).label("price_count"),
             func.count(func.distinct(ClinicServicePrice.service_id)).label("service_count"),
         )
-        .join(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
-        .group_by(ClinicBranch.city)
+        .where(ClinicServicePrice.city.is_not(None))
+        .group_by(ClinicServicePrice.city)
         .order_by(func.count(ClinicServicePrice.id).desc())
     )
     city_stmt = _base_where(city_stmt, include_stale=include_stale)
     if city:
-        city_stmt = city_stmt.where(ClinicBranch.city == city)
+        city_stmt = city_stmt.where(ClinicServicePrice.city == city)
 
     cities = [
         CityCoverage(

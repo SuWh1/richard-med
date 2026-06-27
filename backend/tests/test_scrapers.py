@@ -53,6 +53,25 @@ def test_should_filter_doq_services_to_queried_specialization():
     assert all(i.metadata["specialization"] == "Терапевт" for i in items)
 
 
+def test_should_parse_kdl_branches_from_cabinet_json():
+    from pathlib import Path
+
+    fixture = Path(__file__).parent / "fixtures" / "kdl_cabinets_astana.json"
+    hits = KdlOlympAdapter().parse_branches(fixture.read_text(encoding="utf-8"), "Астана")
+
+    assert len(hits) == 2  # the null-coords cabinet is skipped
+    first = hits[0]
+    assert first.city == "Астана"
+    assert first.lat == 51.128207 and first.lng == 71.430411
+    assert first.address == "ул. Тестовая, 1"
+    assert first.external_id == "procedurnyy-kabinet-test-1"
+    assert "08:00" in (first.working_hours or "")
+
+
+def test_should_have_no_branches_for_doq_by_default():
+    assert DoqAdapter().fetch_branches("Астана") == []
+
+
 def test_should_resolve_known_adapters_from_registry():
     assert set(available_sources()) == {"kdl_olymp", "doq"}
     assert get_adapter("kdl_olymp").identity() == "kdl_olymp"

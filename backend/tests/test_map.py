@@ -41,6 +41,7 @@ def _seed_price(
         clinic_id=clinic.id,
         branch_id=branch.id,
         service_id=service_id,
+        city=city,
         price_kzt=price,
         source_url="https://example.kz/x",
         parsed_at=datetime.now(UTC) - timedelta(days=age_days),
@@ -121,7 +122,8 @@ def test_should_return_map_pins_endpoint_for_oak():
     pins = resp.json()
     assert len(pins) >= 2
     assert all(p["lat"] is not None and p["lng"] is not None for p in pins)
-    assert sum(1 for p in pins if p["is_cheapest"]) == 1
+    # Cheapest is now per-clinic (a chain's price fans out to all its points).
+    assert any(p["is_cheapest"] for p in pins)
 
 
 def test_should_reject_map_request_without_service_id():

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy import Float, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.cities import CITIES, City
 from app.models import (
     Clinic,
     ClinicBranch,
@@ -82,6 +83,21 @@ def _freshness(age_days: int) -> str:
     if age_days <= STALE_DAYS:
         return "recent"
     return "stale"
+
+
+def available_cities(session: Session) -> list[City]:
+    """Canonical cities that currently have active prices, in canonical order."""
+    present = set(
+        session.scalars(
+            select(ClinicServicePrice.city)
+            .where(
+                ClinicServicePrice.is_active.is_(True),
+                ClinicServicePrice.city.is_not(None),
+            )
+            .distinct()
+        ).all()
+    )
+    return [c for c in CITIES if c.name in present]
 
 
 def autocomplete(session: Session, q: str, limit: int = 10) -> list[Suggestion]:
@@ -179,7 +195,7 @@ def prices_for_service(
         )
     )
     if city:
-        stmt = stmt.where(ClinicBranch.city == city)
+        stmt = stmt.where(ClinicServicePrice.city == city)
     if price_min is not None:
         stmt = stmt.where(ClinicServicePrice.price_kzt >= price_min)
     if price_max is not None:
@@ -215,7 +231,7 @@ def _build_card(
         clinic_name=clinic.name,
         doctor_name=_doctor_name(metadata),
         branch_id=branch.id if branch else None,
-        city=branch.city if branch else None,
+        city=branch.city if branch else price.city,
         address=branch.address if branch else None,
         lat=branch.lat if branch else None,
         lng=branch.lng if branch else None,
@@ -283,56 +299,61 @@ def map_pins(
         func.extract("epoch", now - ClinicServicePrice.parsed_at) / 86400.0
     ).cast(Float)
 
-    stmt = (
-        select(ClinicServicePrice, Clinic, ClinicBranch, age_days.label("age"))
+    # Clinics with an active, fresh, city-wide price for this service.
+    price_stmt = (
+        select(ClinicServicePrice, Clinic, age_days.label("age"))
         .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
-        .join(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
         .where(
             ClinicServicePrice.service_id == service_id,
             ClinicServicePrice.is_active.is_(True),
-            ClinicBranch.lat.is_not(None),
-            ClinicBranch.lng.is_not(None),
             age_days <= STALE_DAYS,
         )
     )
     if city:
-        stmt = stmt.where(ClinicBranch.city == city)
-    if bbox is not None:
-        min_lng, min_lat, max_lng, max_lat = bbox
-        stmt = stmt.where(
-            ClinicBranch.lng >= min_lng,
-            ClinicBranch.lng <= max_lng,
-            ClinicBranch.lat >= min_lat,
-            ClinicBranch.lat <= max_lat,
-        )
-
-    rows = session.execute(stmt).all()
-    if not rows:
+        price_stmt = price_stmt.where(ClinicServicePrice.city == city)
+    priced = session.execute(price_stmt).all()
+    if not priced:
         return []
 
-    cheapest_price = min(price.price_kzt for price, _clinic, _branch, _age in rows)
-    cheapest_id = next(
-        price.id for price, _clinic, _branch, _age in rows if price.price_kzt == cheapest_price
-    )
-    return [
-        MapPin(
-            price_id=price.id,
-            clinic_id=clinic.id,
-            clinic_name=clinic.name,
-            branch_id=branch.id,
-            city=branch.city,
-            address=branch.address,
-            lat=branch.lat,
-            lng=branch.lng,
-            price_kzt=price.price_kzt,
-            parsed_at=price.parsed_at,
-            age_days=int(age),
-            freshness=_freshness(int(age)),
-            source_url=price.source_url,
-            is_cheapest=price.id == cheapest_id,
+    cheapest_price = min(price.price_kzt for price, _clinic, _age in priced)
+    pins: list[MapPin] = []
+    for price, clinic, age in priced:
+        # Fan the city-wide price out to every collection point of that clinic.
+        branch_stmt = select(ClinicBranch).where(
+            ClinicBranch.clinic_id == clinic.id,
+            ClinicBranch.city == (city or price.city),
+            ClinicBranch.lat.is_not(None),
+            ClinicBranch.lng.is_not(None),
         )
-        for price, clinic, branch, age in rows
-    ]
+        if bbox is not None:
+            min_lng, min_lat, max_lng, max_lat = bbox
+            branch_stmt = branch_stmt.where(
+                ClinicBranch.lng >= min_lng,
+                ClinicBranch.lng <= max_lng,
+                ClinicBranch.lat >= min_lat,
+                ClinicBranch.lat <= max_lat,
+            )
+        is_cheapest = price.price_kzt == cheapest_price
+        for branch in session.scalars(branch_stmt):
+            pins.append(
+                MapPin(
+                    price_id=price.id,
+                    clinic_id=clinic.id,
+                    clinic_name=clinic.name,
+                    branch_id=branch.id,
+                    city=branch.city,
+                    address=branch.address,
+                    lat=branch.lat,
+                    lng=branch.lng,
+                    price_kzt=price.price_kzt,
+                    parsed_at=price.parsed_at,
+                    age_days=int(age),
+                    freshness=_freshness(int(age)),
+                    source_url=price.source_url,
+                    is_cheapest=is_cheapest,
+                )
+            )
+    return pins
 
 
 def _sort_cards(cards: list[PriceCard], sort: str) -> list[PriceCard]:
