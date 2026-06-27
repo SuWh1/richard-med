@@ -2,6 +2,8 @@ export type Freshness = "fresh" | "recent" | "stale";
 
 export type SortKey = "best_value" | "cheapest" | "newest";
 
+export type City = "Астана" | "Алматы" | "Караганда" | "Актобе";
+
 export interface Suggestion {
   id: number;
   name_ru: string;
