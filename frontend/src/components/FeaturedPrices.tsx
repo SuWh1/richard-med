@@ -4,7 +4,6 @@ import { fetchFeatured } from "@/lib/api";
 import { formatPrice } from "@/lib/format";
 import { useCountUp } from "@/hooks/useCountUp";
 import { ClinicAvatar } from "./ClinicAvatar";
-import { FreshBadge } from "./FreshBadge";
 import { ScrollReveal } from "./ScrollReveal";
 import { GlowCard } from "./GlowCard";
 
@@ -51,7 +50,6 @@ export function FeaturedPrices({ onPick }: FeaturedPricesProps) {
                   <span className="truncate text-[11px] text-muted-foreground">
                     {card.clinic_name}
                   </span>
-                  <FreshBadge freshness={card.freshness} ageDays={card.age_days} />
                 </div>
               </div>
               <div className="shrink-0 text-base font-bold tabular-nums text-foreground">

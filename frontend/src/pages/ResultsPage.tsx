@@ -17,7 +17,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { AppShell } from "@/components/AppShell";
 import { SearchBar } from "@/components/SearchBar";
 import { ResultsControlsBar } from "@/components/results/ResultsControlsBar";
-import { StaleBanner } from "@/components/StaleBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { ClinicCardSkeletonList } from "@/components/ClinicCardSkeleton";
 import { ClinicCard } from "@/components/ClinicCard";
@@ -37,7 +36,6 @@ export function ResultsPage() {
 
   const [input, setInput] = useState(state.q);
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
   const [passport, setPassport] = useState<PriceCardData | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
 
@@ -96,7 +94,6 @@ export function ResultsPage() {
   );
   const resolved = searchQuery.data?.resolved_service ?? null;
   const resolvedId = resolved?.id ?? null;
-  const hasStale = cards.some((c) => c.freshness === "stale");
 
   const mapQuery = useQuery({
     queryKey: ["map-pins", resolvedId, state.city],
@@ -105,7 +102,6 @@ export function ResultsPage() {
   });
   const pins = useMemo(() => dedupePinsByLocation(mapQuery.data ?? []), [mapQuery.data]);
   const hasMap = pins.length > 0;
-  const clinicCount = useMemo(() => new Set(pins.map((p) => p.clinic_id)).size, [pins]);
 
   useEffect(() => {
     if (!scrollOnSelect.current || selectedClinicId == null) return;
@@ -118,7 +114,6 @@ export function ResultsPage() {
   const runSearch = (q: string) => {
     if (q.trim().length < 2) return;
     setSelectedClinicId(null);
-    setBannerDismissed(false);
     update({ q: q.trim(), priceMin: "", priceMax: "" }, { replace: false });
   };
   const pickSuggestion = (s: Suggestion) => runSearch(s.name_ru);
@@ -155,9 +150,6 @@ export function ResultsPage() {
         center={cityCenter}
         median={median}
       />
-      <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-full border border-border bg-card/95 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur">
-        {pins.length} точек · {clinicCount} клиник
-      </div>
     </div>
   );
 
@@ -177,10 +169,6 @@ export function ResultsPage() {
         onReset={resetFilters}
         count={searchQuery.data?.count ?? cards.length}
       />
-
-      {hasStale && !bannerDismissed && (
-        <StaleBanner onDismiss={() => setBannerDismissed(true)} />
-      )}
 
       <div className="mx-auto flex w-full max-w-[1400px] flex-1">
         <div ref={listRef} className="w-full p-4 lg:w-[58%] lg:p-5">

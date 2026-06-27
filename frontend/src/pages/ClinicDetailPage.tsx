@@ -15,7 +15,6 @@ import {
 import { fetchClinic, fetchClinicServices } from "@/lib/api";
 import { capitalize, formatPrice, sourceLabel } from "@/lib/format";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
-import { FreshBadge } from "@/components/FreshBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AppShell } from "@/components/AppShell";
 import { ClinicCardSkeletonList } from "@/components/ClinicCardSkeleton";
@@ -185,7 +184,6 @@ export function ClinicDetailPage() {
                         <span className="text-[11px] text-muted-foreground">
                           {capitalize(s.category)}
                         </span>
-                        <FreshBadge freshness={s.freshness} ageDays={s.age_days} />
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">

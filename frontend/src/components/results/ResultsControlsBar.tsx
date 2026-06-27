@@ -15,7 +15,6 @@ import { FiltersSheet } from "./FiltersSheet";
 const SORT_LABELS: { key: SortKey; label: string }[] = [
   { key: "best_value", label: "Оптимальные" },
   { key: "cheapest", label: "Сначала дешёвые" },
-  { key: "newest", label: "Сначала новые" },
 ];
 
 function clinicWord(count: number): string {

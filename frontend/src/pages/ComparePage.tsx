@@ -8,7 +8,6 @@ import { parseClinicIds } from "@/lib/compare";
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/components/ui/utils";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
-import { FreshBadge } from "@/components/FreshBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AppShell } from "@/components/AppShell";
 import {
@@ -119,7 +118,6 @@ export function ComparePage() {
                         {durationLabel(r.duration_min, r.duration_max)}
                       </TableCell>
                       <TableCell>
-                        <FreshBadge freshness={r.freshness} ageDays={r.age_days} />
                       </TableCell>
                       <TableCell>
                         <a

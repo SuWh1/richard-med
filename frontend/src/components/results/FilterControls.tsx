@@ -5,7 +5,6 @@ import type { SortKey } from "@/types";
 import { cn } from "@/components/ui/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -17,7 +16,6 @@ import {
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "best_value", label: "Оптимальные" },
   { key: "cheapest", label: "Дешёвые" },
-  { key: "newest", label: "Свежие" },
 ];
 
 interface FilterControlsProps {
@@ -39,7 +37,7 @@ export function FilterControls({ state, cities, onPatch }: FilterControlsProps) 
     <div className="space-y-5">
       <div className="space-y-2">
         <Label>Сортировка</Label>
-        <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
           {SORTS.map((opt) => (
             <button
               key={opt.key}
@@ -95,20 +93,6 @@ export function FilterControls({ state, cities, onPatch }: FilterControlsProps) 
             onKeyDown={(e) => e.key === "Enter" && applyPrice()}
           />
         </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-3">
-        <Label htmlFor="stale-toggle" className="cursor-pointer leading-tight">
-          Показывать устаревшие цены
-          <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
-            Старше 30 дней — могут быть неактуальны. По умолчанию скрыты.
-          </span>
-        </Label>
-        <Switch
-          id="stale-toggle"
-          checked={state.includeStale}
-          onCheckedChange={(v) => onPatch({ includeStale: v })}
-        />
       </div>
     </div>
   );

@@ -1,12 +1,11 @@
 import { type MouseEvent } from "react";
-import { AlertTriangle, Info, Navigation, Star } from "lucide-react";
+import { Info, Navigation, Star } from "lucide-react";
 
 import type { PriceCard as PriceCardData } from "@/types";
 import { formatPrice } from "@/lib/format";
 import { discountPct } from "@/lib/results";
 import { cn } from "@/components/ui/utils";
 import { ClinicAvatar } from "./ClinicAvatar";
-import { FreshBadge } from "./FreshBadge";
 import { StatusBadge } from "./StatusBadge";
 
 interface ClinicCardProps {
@@ -115,18 +114,8 @@ export function ClinicCard({
             </div>
           )}
 
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <FreshBadge freshness={card.freshness} ageDays={card.age_days} />
-            {duration && (
-              <span className="text-[11px] text-muted-foreground">{duration}</span>
-            )}
-          </div>
-
-          {card.freshness === "stale" && (
-            <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-warning-soft px-3 py-2 text-[11px] text-warning-strong">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              Цена может быть неактуальной. Проверьте источник перед записью.
-            </div>
+          {duration && (
+            <div className="mb-3 text-[11px] text-muted-foreground">{duration}</div>
           )}
 
           <div className="flex flex-wrap items-center gap-2">

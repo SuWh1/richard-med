@@ -4,7 +4,6 @@ import type { MapPin } from "@/types";
 import { formatPrice } from "@/lib/format";
 import { savingsVsMedian } from "@/lib/results";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
-import { FreshBadge } from "@/components/FreshBadge";
 
 interface MapPopupCardProps {
   pin: MapPin;
@@ -42,7 +41,6 @@ export function MapPopupCard({ pin, median }: MapPopupCardProps) {
         </div>
       )}
 
-      <FreshBadge freshness={pin.freshness} ageDays={pin.age_days} />
 
       <div className="mt-3 flex gap-2">
         <a
