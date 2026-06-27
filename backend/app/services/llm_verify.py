@@ -58,8 +58,12 @@ class LlmVerifier:
             response = self._client.post(url, json=body)
             response.raise_for_status()
             text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except (httpx.HTTPError, KeyError, IndexError, ValueError):
-            logger.exception("gemini verify failed for %r ~ %r", raw_name, candidate_name)
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            # Log only the error type/status — never the exception itself or the URL,
+            # which carries the API key as a query param.
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            detail = f"{type(exc).__name__}{f' {status}' if status else ''}"
+            logger.warning("gemini verify failed (%s) for %r", detail, raw_name)
             return None
         return parse_verdict(text)
 
