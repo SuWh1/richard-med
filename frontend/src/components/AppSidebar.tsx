@@ -73,15 +73,9 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              className="pointer-events-none"
-              tooltip={`Казахстан · ${city}`}
-            >
+            <SidebarMenuButton className="pointer-events-none" tooltip={city}>
               <MapPin className="text-primary" />
-              <span className="flex flex-col leading-tight">
-                <span className="text-[11px] text-muted-foreground">Казахстан</span>
-                <span className="font-medium">{city}</span>
-              </span>
+              <span className="font-medium">{city}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
