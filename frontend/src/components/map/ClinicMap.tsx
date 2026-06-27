@@ -68,7 +68,11 @@ function PanToSelected({
     if (selectedClinicId == null) return;
     const pin = pins.find((p) => p.clinic_id === selectedClinicId);
     if (!pin) return;
-    map.panTo([pin.lat, pin.lng], { animate: true, duration: 0.4 });
+    // Zoom in (not just pan) so the highlighted clinic is clearly located, not a dot in a wide view.
+    map.setView([pin.lat, pin.lng], Math.max(map.getZoom(), 14), {
+      animate: true,
+      duration: 0.4,
+    });
     markers.current.get(pin.branch_id)?.openPopup();
   }, [map, pins, selectedClinicId, markers]);
   return null;
