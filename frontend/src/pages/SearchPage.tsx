@@ -1,17 +1,20 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import type { PriceCard as PriceCardData, SortKey, Suggestion } from "@/types";
-import { fetchFeatured, fetchSearch, fetchSuggestions } from "@/lib/api";
+import type { City, PriceCard as PriceCardData, SortKey, Suggestion } from "@/types";
+import { fetchSearch, fetchSuggestions } from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
+import { HomeHero } from "@/components/HomeHero";
 import { SearchBar } from "@/components/SearchBar";
 import { SortControls } from "@/components/SortControls";
-import { PriceCard } from "@/components/PriceCard";
+import { ClinicCard } from "@/components/ClinicCard";
 import { PricePassport } from "@/components/PricePassport";
 import { ClinicMap } from "@/components/map/ClinicMap";
 
 export function SearchPage() {
+  const [city, setCity] = useState<City>("Астана");
   const [input, setInput] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [sort, setSort] = useState<SortKey>("best_value");
@@ -21,6 +24,7 @@ export function SearchPage() {
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
 
   const debounced = useDebounce(input, 250);
+  const isSearching = submitted.trim().length >= 2;
 
   const suggestionsQuery = useQuery({
     queryKey: ["suggestions", debounced],
@@ -29,17 +33,9 @@ export function SearchPage() {
   });
 
   const searchQuery = useQuery({
-    queryKey: ["search", submitted, sort, includeStale],
-    queryFn: () => fetchSearch({ q: submitted, sort, include_stale: includeStale }),
-    enabled: submitted.trim().length >= 2,
-  });
-
-  const isSearching = submitted.trim().length >= 2;
-
-  const featuredQuery = useQuery({
-    queryKey: ["featured"],
-    queryFn: () => fetchFeatured(6),
-    enabled: !isSearching,
+    queryKey: ["search", submitted, city, sort, includeStale],
+    queryFn: () => fetchSearch({ q: submitted, city, sort, include_stale: includeStale }),
+    enabled: isSearching,
   });
 
   const cards = searchQuery.data?.cards ?? [];
@@ -55,108 +51,82 @@ export function SearchPage() {
   const runSearch = (q: string) => {
     setInput(q);
     setSubmitted(q);
+    setSelectedId(null);
   };
-
   const pickSuggestion = (s: Suggestion) => runSearch(s.name_ru);
 
+  const searchBar = (
+    <SearchBar
+      value={input}
+      onChange={setInput}
+      onSubmit={() => runSearch(input)}
+      suggestions={suggestionsQuery.data ?? []}
+      onPick={pickSuggestion}
+    />
+  );
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <header className="mb-6 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Richard Med</h1>
-          <p className="text-sm text-slate-500">
-            Сравните реальные цены на медицинские услуги в Казахстане
-          </p>
-        </div>
-        <nav className="flex shrink-0 gap-4 text-sm font-medium text-sky-700">
-          <Link to="/analytics" className="hover:underline">
-            Аналитика
-          </Link>
-          <Link to="/dashboard" className="hover:underline">
-            Источники данных →
-          </Link>
-        </nav>
-      </header>
+    <div className="flex min-h-screen flex-col bg-background">
+      <Header city={city} onCityChange={setCity} />
 
-      <SearchBar
-        value={input}
-        onChange={setInput}
-        onSubmit={() => runSearch(input)}
-        suggestions={suggestionsQuery.data ?? []}
-        onPick={pickSuggestion}
-      />
+      {!isSearching ? (
+        <HomeHero city={city} searchBar={searchBar} onPickPopular={runSearch} />
+      ) : (
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+          <div className="mb-6">{searchBar}</div>
 
-      {!isSearching && (
-        <div className="mt-8 space-y-4">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-slate-400">
-            Примеры услуг
-          </h2>
-          <div className="space-y-3">
-            {(featuredQuery.data ?? []).map((card) => (
-              <PriceCard
-                key={card.price_id}
-                card={card}
-                isCheapest={false}
-                onOpenPassport={() => setPassport(card)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isSearching && (
-        <div className="mt-6 space-y-4">
           {searchQuery.data?.resolved_service && (
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">
+            <div className="mb-4 flex items-baseline justify-between">
+              <h2 className="text-lg font-semibold text-foreground">
                 {searchQuery.data.resolved_service.name_ru}
               </h2>
-              <span className="text-sm text-slate-500">
+              <span className="text-sm text-muted-foreground">
                 {searchQuery.data.count} предложений
               </span>
             </div>
           )}
 
           {cards.length > 0 && (
-            <SortControls
-              sort={sort}
-              onChange={setSort}
-              includeStale={includeStale}
-              onToggleStale={setIncludeStale}
-            />
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <SortControls
+                sort={sort}
+                onChange={setSort}
+                includeStale={includeStale}
+                onToggleStale={setIncludeStale}
+              />
+              {hasMap && (
+                <div className="flex gap-2 lg:hidden">
+                  {(["list", "map"] as const).map((view) => (
+                    <button
+                      key={view}
+                      type="button"
+                      onClick={() => setMobileView(view)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                        mobileView === view
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground"
+                      }`}
+                    >
+                      {view === "list" ? "Список" : "Карта"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {searchQuery.isLoading && (
-            <p className="text-sm text-slate-400">Загрузка…</p>
+            <p className="text-sm text-muted-foreground">Загрузка…</p>
           )}
           {searchQuery.isError && (
-            <p className="text-sm text-rose-600">
+            <p className="text-sm text-destructive">
               Не удалось загрузить цены. Попробуйте ещё раз.
             </p>
           )}
           {searchQuery.isSuccess && cards.length === 0 && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               По запросу «{submitted}» цены не найдены. Попробуйте уточнить услугу.
             </p>
-          )}
-
-          {cards.length > 0 && hasMap && (
-            <div className="flex gap-2 lg:hidden">
-              {(["list", "map"] as const).map((view) => (
-                <button
-                  key={view}
-                  type="button"
-                  onClick={() => setMobileView(view)}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    mobileView === view
-                      ? "bg-teal-600 text-white"
-                      : "bg-slate-100 text-slate-600"
-                  }`}
-                >
-                  {view === "list" ? "Список" : "Карта"}
-                </button>
-              ))}
-            </div>
           )}
 
           <div className={`grid gap-6 ${hasMap ? "lg:grid-cols-2" : ""}`}>
@@ -166,25 +136,20 @@ export function SearchPage() {
               }`}
             >
               {cards.map((card) => (
-                <div
+                <ClinicCard
                   key={card.price_id}
-                  onMouseEnter={() => setSelectedId(card.price_id)}
-                  className={`rounded-xl transition ${
-                    selectedId === card.price_id ? "ring-2 ring-teal-500/60" : ""
-                  }`}
-                >
-                  <PriceCard
-                    card={card}
-                    isCheapest={card.price_kzt === cheapestPrice}
-                    onOpenPassport={() => setPassport(card)}
-                  />
-                </div>
+                  card={card}
+                  isCheapest={card.price_kzt === cheapestPrice}
+                  isHighlighted={selectedId === card.price_id}
+                  onHover={setSelectedId}
+                  onPassport={() => setPassport(card)}
+                />
               ))}
             </div>
 
             {hasMap && (
               <div className={mobileView === "list" ? "hidden lg:block" : ""}>
-                <div className="sticky top-4 h-[60vh] lg:h-[72vh]">
+                <div className="sticky top-20 h-[60vh] lg:h-[72vh]">
                   <ClinicMap
                     cards={cards}
                     cheapestPrice={cheapestPrice}
@@ -195,17 +160,11 @@ export function SearchPage() {
               </div>
             )}
           </div>
-        </div>
+        </main>
       )}
 
-      <footer className="mt-10 border-t border-slate-100 pt-4 text-xs text-slate-400">
-        Информация о ценах носит справочный характер. Перед лечением обратитесь к
-        врачу.
-      </footer>
-
-      {passport && (
-        <PricePassport card={passport} onClose={() => setPassport(null)} />
-      )}
+      <Footer />
+      <PricePassport card={passport} onClose={() => setPassport(null)} />
     </div>
   );
 }
