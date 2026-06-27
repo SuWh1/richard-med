@@ -21,11 +21,11 @@ docker compose up -d db
 ## Run
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8001
 ```
 
-- API docs: http://localhost:8000/docs
-- Health:   http://localhost:8000/health
+- API docs: http://localhost:8001/docs
+- Health:   http://localhost:8001/health
 
 ## Test & lint
 

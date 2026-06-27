@@ -312,7 +312,7 @@ docker compose up -d db                         # PostgreSQL
 
 cd backend && python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt && cp .env.example .env
-uvicorn app.main:app --reload                   # http://localhost:8000/docs
+uvicorn app.main:app --reload --port 8001       # http://localhost:8001/docs
 
 cd frontend && npm install && cp .env.example .env
 npm run dev                                      # http://localhost:5173
