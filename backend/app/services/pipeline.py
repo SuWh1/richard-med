@@ -18,6 +18,7 @@ from app.models import (
 )
 from app.scrapers.base import RawPriceItem as RawItem
 from app.scrapers.registry import get_adapter
+from app.services.branches import sync_branches
 from app.services.normalization import FUZZY_AUTO, ServiceMatcher
 
 logger = logging.getLogger(__name__)
@@ -216,6 +217,16 @@ def run_source(
 
     if adapter is None:
         adapter = get_adapter(source_name)
+
+    # Import this brand's physical points (cabinets) so the map can plot every location.
+    # Chain prices are city-wide; map_pins fans them out across these branches.
+    brand = adapter.brand_name()
+    if brand:
+        try:
+            sync_branches(session, source_name, brand, adapter.fetch_branches(city))
+        except Exception:  # noqa: BLE001 — best-effort; a branch fetch must not abort prices
+            logger.exception("branch sync failed for %s/%s", source_name, city)
+
     items_found = 0
     seen_price_ids: set[int] = set()
     # One active price per (clinic, service, branch) per run; keep the cheapest so

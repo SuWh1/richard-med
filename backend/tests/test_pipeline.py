@@ -12,6 +12,7 @@ from app.models import (
 )
 from app.scrapers.base import (
     BaseSourceAdapter,
+    BranchHit,
     RawPriceItem,
     SnapshotResult,
 )
@@ -131,6 +132,35 @@ def test_should_route_semantic_matches_to_the_review_queue(db_session):
     )
     assert queued is not None
     assert queued.raw_name == "qpwoeiruty zxcvbnm analyte"
+
+
+class _BranchKdlAdapter(_StubKdlAdapter):
+    """KDL stub that also serves cabinet locations (no network)."""
+
+    def fetch_branches(self, city: str) -> list[BranchHit]:
+        return [
+            BranchHit("c1", "KDL Кабинет 1", "Астана", "ул. Абая, 1", 51.10, 71.40, None, None),
+            BranchHit("c2", "KDL Кабинет 2", "Астана", "ул. Сейфуллина, 2", 51.20, 71.50, None, None),
+        ]
+
+
+def test_should_sync_brand_branches_during_run(db_session):
+    from sqlalchemy import select
+
+    from app.models import Clinic, ClinicBranch
+
+    run_source(db_session, "kdl_olymp", "Астана", adapter=_BranchKdlAdapter())
+
+    clinic = db_session.scalars(
+        select(Clinic).where(Clinic.source_name == "kdl_olymp", Clinic.name == "KDL Olymp")
+    ).first()
+    assert clinic is not None
+    addrs = set(
+        db_session.scalars(
+            select(ClinicBranch.address).where(ClinicBranch.clinic_id == clinic.id)
+        ).all()
+    )
+    assert {"ул. Абая, 1", "ул. Сейфуллина, 2"} <= addrs
 
 
 def test_should_persist_kdl_durations_from_json(db_session):
