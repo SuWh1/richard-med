@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Zap } from "lucide-react";
 
 import type { ParseRunSummary, ParsedPriceSample } from "@/types";
 import {
@@ -15,6 +16,15 @@ import {
   formatPrice,
   sourceLabel,
 } from "@/lib/format";
+import { summarizeHealth } from "@/lib/dashboard";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Kpis } from "@/components/Kpis";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { SourceHealthCard } from "@/components/SourceHealthCard";
 import { FreshnessBadge } from "@/components/FreshnessBadge";
@@ -112,43 +122,44 @@ export function DashboardPage() {
     },
   });
 
-  const runningRunFor = (source: string) => {
-    const latest = latestBySource.get(source);
-    return latest && latest.status === "running" ? latest : null;
-  };
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Источники данных</h1>
-          <p className="text-sm text-slate-500">
-            Мониторинг парсеров: статусы запусков, объём и качество данных
+          <h1 className="text-xl font-semibold text-foreground">Source Health Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Управление парсерами и мониторинг источников
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <select
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            disabled={anyBusy}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm disabled:opacity-50"
-          >
-            {CITIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
+          <Select value={city} onValueChange={setCity} disabled={anyBusy}>
+            <SelectTrigger className="h-9 w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CITIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <button
             onClick={() => runMutation.mutate(null)}
             disabled={anyBusy}
-            className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-[36px] items-center gap-2 rounded-xl bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition hover:bg-[#0b8a7a] disabled:opacity-50"
           >
-            {anyBusy ? "Идёт парсинг…" : "Запустить все"}
+            <Zap className="h-4 w-4" /> {anyBusy ? "Идёт парсинг…" : "Запустить все"}
           </button>
-          <Link to="/" className="text-sm font-medium text-sky-700 hover:underline">
+          <Link to="/" className="text-sm font-medium text-primary hover:underline">
             ← К поиску
           </Link>
         </div>
       </header>
+
+      <div className="mb-6">
+        <Kpis kpis={summarizeHealth(healthQuery.data ?? [])} />
+      </div>
 
       {runMutation.isError ? (
         <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -156,17 +167,19 @@ export function DashboardPage() {
         </p>
       ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="space-y-3">
+        <h2 className="font-semibold text-foreground">Источники данных</h2>
         {healthQuery.data?.map((health) => (
           <SourceHealthCard
             key={health.source_name}
             health={health}
             busy={isBusy(health.source_name)}
-            runningSince={runningRunFor(health.source_name)?.started_at ?? null}
             onRun={() => runMutation.mutate(health.source_name)}
           />
         ))}
-        {healthQuery.isLoading ? <p className="text-sm text-slate-500">Загрузка…</p> : null}
+        {healthQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Загрузка…</p>
+        ) : null}
       </section>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">

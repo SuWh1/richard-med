@@ -1,90 +1,83 @@
+import { AlertTriangle, Check, RotateCw } from "lucide-react";
+
 import type { SourceHealth } from "@/types";
 import { formatDateTime, sourceLabel } from "@/lib/format";
-import { RunStatusBadge } from "@/components/RunStatusBadge";
+import { cn } from "@/components/ui/utils";
+import { StatusBadge, type StatusVariant } from "@/components/StatusBadge";
 
-export function SourceHealthCard({
-  health,
-  busy,
-  runningSince,
-  onRun,
-}: {
+function statusOf(health: SourceHealth): { variant: StatusVariant; text: string } {
+  if (health.last_status === "failed" || health.last_error) {
+    return { variant: "error", text: "Есть ошибки" };
+  }
+  if (health.active_prices === 0 || health.active_prices - health.stale_prices <= 0) {
+    return { variant: "warning", text: "Нет свежих данных" };
+  }
+  return { variant: "success", text: "Источник работает" };
+}
+
+const DOT: Record<StatusVariant, string> = {
+  success: "bg-[#16A34A]",
+  warning: "bg-[#D97706]",
+  error: "bg-[#DC2626]",
+  neutral: "bg-[#CBD5E1]",
+};
+
+interface SourceHealthCardProps {
   health: SourceHealth;
   busy: boolean;
-  runningSince: string | null;
   onRun: () => void;
-}) {
-  const ratePct = Math.round(health.success_rate_7d * 100);
-  const elapsed = runningSince
-    ? Math.max(0, Math.floor((Date.now() - new Date(runningSince).getTime()) / 1000))
-    : null;
+}
+
+export function SourceHealthCard({ health, busy, onRun }: SourceHealthCardProps) {
+  const status = busy
+    ? { variant: "neutral" as StatusVariant, text: "Парсинг…" }
+    : statusOf(health);
 
   return (
     <div
-      className={`rounded-xl border bg-white p-4 shadow-sm transition ${
-        busy ? "border-sky-300 ring-1 ring-sky-200" : "border-slate-200"
-      }`}
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-xl border bg-white p-5 shadow-sm transition",
+        busy ? "border-primary/40 ring-1 ring-primary/20" : "border-border",
+      )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="font-semibold text-slate-900">{sourceLabel(health.source_name)}</h3>
-          <p className="mt-0.5 text-xs text-slate-500">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", DOT[status.variant])} />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">
+            {sourceLabel(health.source_name)}
+          </div>
+          <div className="text-xs text-muted-foreground">
             Последний запуск: {formatDateTime(health.last_run_at)}
-          </p>
+          </div>
         </div>
-        {busy ? (
-          <RunStatusBadge status="running" />
-        ) : health.last_status ? (
-          <RunStatusBadge status={health.last_status} />
-        ) : null}
       </div>
 
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <Stat label="Активных цен" value={health.active_prices} />
-        <Stat label="Успех (7 дн)" value={health.runs_7d ? `${ratePct}%` : "—"} />
-        <Stat
-          label="Найдено / сохранено"
-          value={`${health.items_found_last} / ${health.items_saved_last}`}
-        />
-        <Stat label="Устаревших" value={health.stale_prices} warn={health.stale_prices > 0} />
-      </dl>
-
-      {health.last_error && !busy ? (
-        <p
-          className="mt-3 truncate rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700"
-          title={health.last_error}
-        >
-          {health.last_error}
-        </p>
-      ) : null}
-
-      {busy ? (
-        <div className="mt-3">
-          <div className="mb-1 flex items-center justify-between text-xs text-sky-700">
-            <span>Идёт парсинг…</span>
-            <span>{elapsed !== null ? `${elapsed} с` : "запуск"}</span>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-sky-100">
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-sky-500" />
+      <div className="flex shrink-0 items-center gap-3">
+        <div className="text-right">
+          <StatusBadge variant={status.variant}>
+            {status.variant === "success" ? (
+              <Check className="h-3 w-3" />
+            ) : status.variant === "neutral" ? (
+              <RotateCw className="h-3 w-3 animate-spin" />
+            ) : (
+              <AlertTriangle className="h-3 w-3" />
+            )}
+            {status.text}
+          </StatusBadge>
+          <div className="mt-1 text-right text-xs text-muted-foreground">
+            Спарсено: {health.items_saved_last}
           </div>
         </div>
-      ) : null}
-
-      <button
-        onClick={onRun}
-        disabled={busy}
-        className="mt-4 w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {busy ? "Парсинг…" : "Запустить парсер"}
-      </button>
-    </div>
-  );
-}
-
-function Stat({ label, value, warn }: { label: string; value: string | number; warn?: boolean }) {
-  return (
-    <div>
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className={`font-semibold ${warn ? "text-amber-700" : "text-slate-900"}`}>{value}</dd>
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={busy}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-[#CBD5E1] transition-colors hover:bg-secondary hover:text-primary disabled:opacity-50"
+          aria-label="Запустить парсер"
+        >
+          <RotateCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} />
+        </button>
+      </div>
     </div>
   );
 }
