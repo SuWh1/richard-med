@@ -17,6 +17,7 @@ import { capitalize, formatPrice, sourceLabel } from "@/lib/format";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AppShell } from "@/components/AppShell";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ClinicCardSkeletonList } from "@/components/ClinicCardSkeleton";
 import { AnimatedList } from "@/components/AnimatedList";
 import { Pager } from "@/components/Pager";
@@ -161,6 +162,23 @@ export function ClinicDetailPage() {
                   />
                 </div>
               </div>
+
+              {servicesQuery.isLoading && (
+                <div className="divide-y divide-secondary">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-3 px-5 py-3.5"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-2/3" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                      <Skeleton className="h-5 w-16" />
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {servicesQuery.isSuccess && filtered.length === 0 && (
                 <p className="px-5 py-6 text-sm text-muted-foreground">

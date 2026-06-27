@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { PriceRangeBar } from "@/components/PriceRangeBar";
 import { AppShell } from "@/components/AppShell";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const ALL = "all";
 const CITY_OPTIONS = ["Астана", "Алматы"];
@@ -90,7 +91,19 @@ export function AnalyticsPage() {
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
           По услугам · диапазон между клиниками
         </h2>
-        {statsQuery.isLoading && <p className="text-sm text-muted-foreground">Загрузка…</p>}
+        {statsQuery.isLoading && (
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-xl border border-border bg-card p-4 shadow-sm"
+              >
+                <Skeleton className="mb-3 h-4 w-48" />
+                <Skeleton className="h-7 w-full rounded-lg" />
+              </div>
+            ))}
+          </div>
+        )}
         {statsQuery.isError && (
           <p className="text-sm text-destructive">Не удалось загрузить аналитику.</p>
         )}

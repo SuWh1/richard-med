@@ -10,6 +10,7 @@ import { cn } from "@/components/ui/utils";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AppShell } from "@/components/AppShell";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -55,7 +56,22 @@ export function ComparePage() {
           </p>
         )}
         {compareQuery.isLoading && (
-          <p className="text-sm text-muted-foreground">Загрузка…</p>
+          <div className="space-y-4">
+            <Skeleton className="h-7 w-64" />
+            <div className="grid grid-cols-3 gap-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="space-y-3 rounded-xl border border-border bg-card p-5 shadow-sm"
+                >
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-28" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {data && (

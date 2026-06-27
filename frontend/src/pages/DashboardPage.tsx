@@ -30,6 +30,7 @@ import { SourceHealthCard } from "@/components/SourceHealthCard";
 import { FreshnessBadge } from "@/components/FreshnessBadge";
 import { AnimatedList } from "@/components/AnimatedList";
 import { AppShell } from "@/components/AppShell";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ServicesTable } from "@/components/ServicesTable";
 import { UnmatchedQueue } from "@/components/UnmatchedQueue";
 
@@ -187,9 +188,21 @@ export function DashboardPage() {
             onRun={() => runMutation.mutate(health.source_name)}
           />
         ))}
-        {healthQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">Загрузка…</p>
-        ) : null}
+        {healthQuery.isLoading &&
+          Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <Skeleton className="h-2.5 w-2.5 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-6 w-28 rounded-full" />
+              <Skeleton className="h-9 w-9 rounded-lg" />
+            </div>
+          ))}
       </section>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
