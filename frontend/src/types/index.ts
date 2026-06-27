@@ -62,6 +62,59 @@ export interface MapPin {
   is_cheapest: boolean;
 }
 
+export interface BranchInfo {
+  id: number;
+  city: string | null;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  phone: string | null;
+  working_hours: string | null;
+}
+
+export interface ClinicDetail {
+  id: number;
+  name: string;
+  website_url: string | null;
+  source_name: string;
+  branches: BranchInfo[];
+}
+
+export interface ClinicServiceRow {
+  service_id: number;
+  service_name: string;
+  category: string;
+  price_kzt: number;
+  parsed_at: string;
+  age_days: number;
+  freshness: Freshness;
+  source_url: string;
+  city: string | null;
+  branch_id: number | null;
+}
+
+export interface CompareRow {
+  clinic_id: number;
+  clinic_name: string;
+  branch_id: number | null;
+  city: string | null;
+  address: string | null;
+  price_kzt: number;
+  duration_min: number | null;
+  duration_max: number | null;
+  parsed_at: string;
+  age_days: number;
+  freshness: Freshness;
+  source_url: string;
+  is_cheapest: boolean;
+}
+
+export interface CompareResult {
+  service_id: number;
+  service_name: string;
+  rows: CompareRow[];
+}
+
 export interface SearchParams {
   q: string;
   city?: string;

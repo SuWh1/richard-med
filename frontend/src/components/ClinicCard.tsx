@@ -14,6 +14,8 @@ interface ClinicCardProps {
   onHover: (priceId: number | null) => void;
   onPassport: () => void;
   onCompare?: () => void;
+  onDetail?: () => void;
+  inCompare?: boolean;
 }
 
 function durationLabel(min: number | null, max: number | null): string | null {
@@ -37,6 +39,8 @@ export function ClinicCard({
   onHover,
   onPassport,
   onCompare,
+  onDetail,
+  inCompare = false,
 }: ClinicCardProps) {
   const duration = durationLabel(card.duration_min, card.duration_max);
 
@@ -124,9 +128,14 @@ export function ClinicCard({
               <button
                 type="button"
                 onClick={onCompare}
-                className="min-h-[32px] rounded-lg border border-border px-3 py-1.5 text-[11px] text-muted-foreground transition-all hover:border-primary/30 hover:bg-secondary"
+                className={cn(
+                  "min-h-[32px] rounded-lg border px-3 py-1.5 text-[11px] transition-all",
+                  inCompare
+                    ? "border-primary bg-accent/50 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/30 hover:bg-secondary",
+                )}
               >
-                Сравнить
+                {inCompare ? "В сравнении ✓" : "Сравнить"}
               </button>
             )}
             <a
@@ -137,6 +146,15 @@ export function ClinicCard({
             >
               <Navigation className="h-3 w-3" /> Маршрут
             </a>
+            {onDetail && (
+              <button
+                type="button"
+                onClick={onDetail}
+                className="ml-auto text-[11px] text-muted-foreground transition-colors hover:text-primary"
+              >
+                Подробнее →
+              </button>
+            )}
           </div>
         </div>
       </div>

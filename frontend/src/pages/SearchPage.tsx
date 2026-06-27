@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import type { City, PriceCard as PriceCardData, SortKey, Suggestion } from "@/types";
 import { fetchSearch, fetchSuggestions } from "@/lib/api";
+import { buildCompareHref } from "@/lib/compare";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -22,7 +24,9 @@ export function SearchPage() {
   const [passport, setPassport] = useState<PriceCardData | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
+  const [compareIds, setCompareIds] = useState<number[]>([]);
 
+  const navigate = useNavigate();
   const debounced = useDebounce(input, 250);
   const isSearching = submitted.trim().length >= 2;
 
@@ -52,8 +56,15 @@ export function SearchPage() {
     setInput(q);
     setSubmitted(q);
     setSelectedId(null);
+    setCompareIds([]);
   };
   const pickSuggestion = (s: Suggestion) => runSearch(s.name_ru);
+
+  const toggleCompare = (clinicId: number) =>
+    setCompareIds((ids) =>
+      ids.includes(clinicId) ? ids.filter((i) => i !== clinicId) : [...ids, clinicId],
+    );
+  const resolvedId = searchQuery.data?.resolved_service?.id ?? null;
 
   const searchBar = (
     <SearchBar
@@ -143,6 +154,9 @@ export function SearchPage() {
                   isHighlighted={selectedId === card.price_id}
                   onHover={setSelectedId}
                   onPassport={() => setPassport(card)}
+                  onCompare={() => toggleCompare(card.clinic_id)}
+                  onDetail={() => navigate(`/clinics/${card.clinic_id}`)}
+                  inCompare={compareIds.includes(card.clinic_id)}
                 />
               ))}
             </div>
@@ -161,6 +175,21 @@ export function SearchPage() {
             )}
           </div>
         </main>
+      )}
+
+      {compareIds.length >= 2 && resolvedId !== null && (
+        <div className="sticky bottom-4 z-40 mx-auto flex w-fit items-center gap-3 rounded-full border border-border bg-white px-5 py-2.5 shadow-lg">
+          <span className="text-sm text-muted-foreground">
+            Выбрано клиник: {compareIds.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate(buildCompareHref(resolvedId, compareIds))}
+            className="rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition hover:bg-[#0b8a7a]"
+          >
+            Сравнить выбранные
+          </button>
+        </div>
       )}
 
       <Footer />

@@ -1,6 +1,9 @@
 import type {
   AnalyticsOverview,
   AnalyticsParams,
+  ClinicDetail,
+  ClinicServiceRow,
+  CompareResult,
   MapPin,
   ParseRunDetail,
   ParseRunSummary,
@@ -47,6 +50,24 @@ export function fetchMapPins(
   bbox?: string,
 ): Promise<MapPin[]> {
   return getJson<MapPin[]>("/search/map", { service_id: serviceId, city, bbox });
+}
+
+export function fetchClinic(clinicId: number): Promise<ClinicDetail> {
+  return getJson<ClinicDetail>(`/clinics/${clinicId}`, {});
+}
+
+export function fetchClinicServices(clinicId: number): Promise<ClinicServiceRow[]> {
+  return getJson<ClinicServiceRow[]>(`/clinics/${clinicId}/services`, {});
+}
+
+export function fetchCompare(
+  serviceId: number,
+  clinicIds: number[],
+): Promise<CompareResult> {
+  return getJson<CompareResult>("/search/compare", {
+    service_id: serviceId,
+    clinic_ids: clinicIds.join(","),
+  });
 }
 
 export function fetchPriceStats(params: AnalyticsParams = {}): Promise<ServicePriceStat[]> {
