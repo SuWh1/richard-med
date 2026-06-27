@@ -1,6 +1,18 @@
 from pathlib import Path
 
-from app.models import ClinicServicePrice, ParseRun, RawDocument
+from app.models import (
+    ClinicServicePrice,
+    ParseRun,
+    RawDocument,
+    Service,
+    ServiceCategory,
+    UnmatchedService,
+)
+from app.scrapers.base import (
+    BaseSourceAdapter,
+    RawPriceItem,
+    SnapshotResult,
+)
 from app.scrapers.base import RawDocument as RawDoc
 from app.scrapers.doq import DoqAdapter, _query_url
 from app.scrapers.http import content_hash
@@ -40,6 +52,77 @@ class _StubKdlAdapter(KdlOlympAdapter):
                 fetched_at="",
             )
         ]
+
+
+class _SemanticOnlyAdapter(BaseSourceAdapter):
+    """Emits one row whose name only resolves via the semantic stage."""
+
+    def identity(self) -> str:
+        return "test_src"
+
+    def fetch(self, city: str) -> list[RawDoc]:
+        return [
+            RawDoc(
+                source_name="test_src",
+                source_url="http://example.test/p",
+                city=city,
+                raw_html="",
+                content_hash=f"hash-{city}",
+                status_code=200,
+                fetched_at="",
+            )
+        ]
+
+    def parse(self, raw_doc: RawDoc) -> list[RawPriceItem]:
+        return [
+            RawPriceItem(
+                source_url="http://example.test/p/1",
+                clinic_raw="Test Clinic",
+                service_name_raw="qpwoeiruty zxcvbnm analyte",
+                price_raw="1000",
+            )
+        ]
+
+    def clean(self, raw_item: RawPriceItem) -> RawPriceItem:
+        return raw_item
+
+    def test_snapshot(self) -> SnapshotResult:
+        return SnapshotResult(item_count=0, sample_items=[])
+
+
+def test_should_route_semantic_matches_to_the_review_queue(db_session):
+    svc = Service(
+        service_key="svc_pipe_sem",
+        name_ru="Уникальный семантический аналит",
+        category=ServiceCategory.laboratory,
+        embedding=[0.1] * 384,
+    )
+    db_session.add(svc)
+    db_session.flush()
+
+    run_source(
+        db_session,
+        "test_src",
+        "Астана",
+        adapter=_SemanticOnlyAdapter(),
+        embedder=lambda _t: [0.1] * 384,
+    )
+
+    # Semantic match must NOT auto-publish a price…
+    published = (
+        db_session.query(ClinicServicePrice)
+        .filter(ClinicServicePrice.service_id == svc.id, ClinicServicePrice.is_active.is_(True))
+        .count()
+    )
+    assert published == 0
+    # …but it should land in the queue as a suggestion.
+    queued = (
+        db_session.query(UnmatchedService)
+        .filter(UnmatchedService.suggested_service_id == svc.id)
+        .first()
+    )
+    assert queued is not None
+    assert queued.raw_name == "qpwoeiruty zxcvbnm analyte"
 
 
 def test_should_persist_kdl_durations_from_json(db_session):

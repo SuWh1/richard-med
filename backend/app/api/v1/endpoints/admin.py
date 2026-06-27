@@ -12,6 +12,7 @@ from app.schemas.admin import (
 )
 from app.scrapers.registry import available_sources
 from app.services import admin
+from app.services.embeddings import get_embedder
 from app.services.pipeline import run_source
 
 logger = logging.getLogger(__name__)
@@ -20,10 +21,11 @@ router = APIRouter()
 
 def _run_sources(source_names: list[str], city: str) -> None:
     session = SessionLocal()
+    embedder = get_embedder()
     try:
         for source in source_names:
             try:
-                run_source(session, source, city, publish=True)
+                run_source(session, source, city, publish=True, embedder=embedder)
                 session.commit()
             except Exception:  # noqa: BLE001 — isolate one source from the rest
                 logger.exception("background run failed for %s", source)

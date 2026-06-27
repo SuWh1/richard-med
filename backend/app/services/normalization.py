@@ -1,4 +1,6 @@
+import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz, process
@@ -7,8 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.models import Service, ServiceAlias
 
+logger = logging.getLogger(__name__)
+
 FUZZY_AUTO = 0.88
 FUZZY_SUGGEST = 0.75
+SEMANTIC_THRESHOLD = 0.88
+
+# A callable that turns a service name into an embedding vector (or None if unavailable).
+Embedder = Callable[[str], list[float] | None]
 
 # Latin letters that share a glyph with a Cyrillic letter. Folded symmetrically on
 # both the query and the catalog side, so mixed-script duplicates collapse together.
@@ -45,7 +53,9 @@ class ServiceMatcher:
     in-memory indexes on construction.
     """
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, embedder: Embedder | None = None):
+        self._session = session
+        self._embedder = embedder
         self._exact: dict[str, int] = {}
         self._alias: dict[str, tuple[int, float]] = {}
         self._fuzzy_choices: dict[str, int] = {}
@@ -78,16 +88,47 @@ class ServiceMatcher:
         best = process.extractOne(
             cleaned, self._fuzzy_choices.keys(), scorer=fuzz.token_set_ratio
         )
-        if best is None:
-            return MatchResult(None, 0.0, "none")
-        choice, score, _ = best
-        confidence = score / 100.0
-        sid = self._fuzzy_choices[choice]
-        if confidence >= FUZZY_AUTO:
-            return MatchResult(sid, confidence, "fuzzy")
+        if best is not None:
+            choice, score, _ = best
+            confidence = score / 100.0
+            sid = self._fuzzy_choices[choice]
+            if confidence >= FUZZY_AUTO:
+                return MatchResult(sid, confidence, "fuzzy")
+        else:
+            confidence, sid = 0.0, None
+
+        # Semantic fallback (offline only) when exact/alias/fuzzy didn't auto-match.
+        semantic = self._semantic_match(raw_name)
+        if semantic is not None:
+            return semantic
+
         if confidence >= FUZZY_SUGGEST:
             return MatchResult(sid, confidence, "suggest")
         return MatchResult(None, confidence, "none")
+
+    def _semantic_match(self, raw_name: str) -> MatchResult | None:
+        if self._embedder is None:
+            return None
+        try:
+            vector = self._embedder(raw_name)
+        except Exception:  # noqa: BLE001 — embedding must never break a parse run
+            logger.exception("embedder failed for %r", raw_name)
+            return None
+        if vector is None:
+            return None
+        distance = Service.embedding.cosine_distance(vector)
+        row = self._session.execute(
+            select(Service.id, distance.label("dist"))
+            .where(Service.embedding.is_not(None))
+            .order_by(distance)
+            .limit(1)
+        ).first()
+        if row is None:
+            return None
+        similarity = 1.0 - float(row.dist)
+        if similarity >= SEMANTIC_THRESHOLD:
+            return MatchResult(row.id, round(similarity, 4), "semantic")
+        return None
 
 
 def match_service(raw_name: str, session: Session) -> MatchResult:

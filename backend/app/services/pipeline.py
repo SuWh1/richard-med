@@ -185,11 +185,17 @@ def _upsert_price(
 
 
 def run_source(
-    session: Session, source_name: str, city: str, adapter=None, publish: bool = False
+    session: Session,
+    source_name: str,
+    city: str,
+    adapter=None,
+    publish: bool = False,
+    embedder=None,
 ) -> RunResult:
     """Run one source for one city through the full pipeline with error isolation.
 
     `adapter` is injectable for tests; in production it is resolved from the registry.
+    `embedder` enables the matcher's semantic stage (offline only); tests leave it None.
     When `publish` is set (background runs), the "running" row is committed up front so
     pollers see live progress; tests leave it off to keep transaction isolation.
     """
@@ -220,7 +226,7 @@ def run_source(
         session.flush()
         return RunResult(run.id, source_name, city, "failed", 0, 0, 0, str(exc))
 
-    matcher = ServiceMatcher(session)
+    matcher = ServiceMatcher(session, embedder=embedder)
     queued_unmatched = set(
         session.scalars(select(UnmatchedService.raw_name)).all()
     )
@@ -253,7 +259,15 @@ def run_source(
                 session.flush()
 
                 result = matcher.match(item.service_name_raw)
-                if result.service_id is None or result.confidence < MATCH_FLOOR:
+                # Semantic matches are suggestions only — generic embeddings can't reliably
+                # distinguish specific lab analytes, so they go to the review queue with a
+                # suggested_service_id rather than auto-publishing a possibly-wrong price.
+                auto_match = (
+                    result.service_id is not None
+                    and result.confidence >= MATCH_FLOOR
+                    and result.method != "semantic"
+                )
+                if not auto_match:
                     if item.service_name_raw not in queued_unmatched:
                         session.add(
                             UnmatchedService(

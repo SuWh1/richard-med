@@ -68,3 +68,38 @@ def test_should_return_none_below_threshold(matcher):
     result = m.match("qpwoeiruty zxcvbnm asdfghjkl")
     assert result.service_id is None
     assert result.method == "none"
+
+
+def test_should_semantic_match_when_fuzzy_fails(db_session):
+    svc = Service(
+        service_key="svc_sem",
+        name_ru="Гонадотропин зюмбель",
+        category=ServiceCategory.laboratory,
+        embedding=[0.1] * 384,
+    )
+    db_session.add(svc)
+    db_session.flush()
+    # Fake embedder returns the same vector → cosine similarity 1.0 with svc.
+    matcher = ServiceMatcher(db_session, embedder=lambda _text: [0.1] * 384)
+
+    result = matcher.match("qpwoeiruty zxcvbnm asdfghjkl")
+
+    assert result.method == "semantic"
+    assert result.service_id == svc.id
+    assert result.confidence >= 0.88
+
+
+def test_should_skip_semantic_without_an_embedder(db_session):
+    svc = Service(
+        service_key="svc_sem2",
+        name_ru="Кортикотропин зюмбель",
+        category=ServiceCategory.laboratory,
+        embedding=[0.1] * 384,
+    )
+    db_session.add(svc)
+    db_session.flush()
+    matcher = ServiceMatcher(db_session)  # no embedder → semantic disabled
+
+    result = matcher.match("qpwoeiruty zxcvbnm asdfghjkl")
+
+    assert result.method == "none"
