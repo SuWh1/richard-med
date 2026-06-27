@@ -1,0 +1,282 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import type { ParsedPriceSample } from "@/types";
+import {
+  fetchParseRuns,
+  fetchRunDetail,
+  fetchSourceHealth,
+  triggerRun,
+} from "@/lib/api";
+import {
+  formatDateTime,
+  formatDuration,
+  formatPrice,
+  sourceLabel,
+} from "@/lib/format";
+import { RunStatusBadge } from "@/components/RunStatusBadge";
+import { SourceHealthCard } from "@/components/SourceHealthCard";
+import { FreshnessBadge } from "@/components/FreshnessBadge";
+
+const CITIES = ["Астана", "Алматы"];
+
+export function DashboardPage() {
+  const queryClient = useQueryClient();
+  const [city, setCity] = useState(CITIES[0]);
+  const [selectedRun, setSelectedRun] = useState<number | null>(null);
+
+  const healthQuery = useQuery({
+    queryKey: ["source-health"],
+    queryFn: fetchSourceHealth,
+  });
+  const runsQuery = useQuery({
+    queryKey: ["parse-runs"],
+    queryFn: () => fetchParseRuns(20),
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((r) => r.status === "running") ? 4000 : false,
+  });
+
+  const runMutation = useMutation({
+    mutationFn: (source: string | null) => triggerRun(source, city),
+    onSuccess: () => {
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["parse-runs"] });
+        queryClient.invalidateQueries({ queryKey: ["source-health"] });
+      }, 1500);
+    },
+  });
+
+  const pending = runMutation.isPending;
+  const pendingSource = runMutation.variables;
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Источники данных</h1>
+          <p className="text-sm text-slate-500">
+            Мониторинг парсеров: статусы запусков, объём и качество данных
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <select
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
+          >
+            {CITIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => runMutation.mutate(null)}
+            disabled={pending}
+            className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-50"
+          >
+            Запустить все
+          </button>
+          <Link to="/" className="text-sm font-medium text-sky-700 hover:underline">
+            ← К поиску
+          </Link>
+        </div>
+      </header>
+
+      {runMutation.isSuccess ? (
+        <p className="mb-4 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          {runMutation.data.message} Данные обновятся автоматически.
+        </p>
+      ) : null}
+      {runMutation.isError ? (
+        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {(runMutation.error as Error).message}
+        </p>
+      ) : null}
+
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {healthQuery.data?.map((health) => (
+          <SourceHealthCard
+            key={health.source_name}
+            health={health}
+            running={pending && pendingSource === health.source_name}
+            onRun={() => runMutation.mutate(health.source_name)}
+          />
+        ))}
+        {healthQuery.isLoading ? <p className="text-sm text-slate-500">Загрузка…</p> : null}
+      </section>
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <RunHistory
+          runs={runsQuery.data ?? []}
+          selectedRun={selectedRun}
+          onSelect={setSelectedRun}
+        />
+        <RunDetailPanel runId={selectedRun} />
+      </div>
+    </div>
+  );
+}
+
+function RunHistory({
+  runs,
+  selectedRun,
+  onSelect,
+}: {
+  runs: import("@/types").ParseRunSummary[];
+  selectedRun: number | null;
+  onSelect: (id: number) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <h2 className="border-b border-slate-100 px-4 py-3 font-semibold text-slate-900">
+        История запусков
+      </h2>
+      <div className="divide-y divide-slate-100">
+        {runs.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-slate-500">Запусков пока нет.</p>
+        ) : null}
+        {runs.map((run) => (
+          <button
+            key={run.id}
+            onClick={() => onSelect(run.id)}
+            className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition hover:bg-slate-50 ${
+              selectedRun === run.id ? "bg-slate-50" : ""
+            }`}
+          >
+            <div>
+              <div className="font-medium text-slate-900">
+                {sourceLabel(run.source_name)}
+                <span className="ml-2 text-xs text-slate-400">{run.city}</span>
+              </div>
+              <div className="text-xs text-slate-500">{formatDateTime(run.started_at)}</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500">
+                {run.items_saved}/{run.items_found}
+              </span>
+              <RunStatusBadge status={run.status} />
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RunDetailPanel({ runId }: { runId: number | null }) {
+  const detailQuery = useQuery({
+    queryKey: ["run-detail", runId],
+    queryFn: () => fetchRunDetail(runId as number),
+    enabled: runId !== null,
+  });
+
+  if (runId === null) {
+    return (
+      <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 p-8 text-sm text-slate-400">
+        Выберите запуск, чтобы увидеть детали
+      </div>
+    );
+  }
+  if (detailQuery.isLoading || !detailQuery.data) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
+        Загрузка…
+      </div>
+    );
+  }
+
+  const { run, errors, unmatched_count, unmatched_samples, price_samples } = detailQuery.data;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+        <h2 className="font-semibold text-slate-900">
+          {sourceLabel(run.source_name)} · {run.city}
+        </h2>
+        <RunStatusBadge status={run.status} />
+      </div>
+
+      <dl className="grid grid-cols-3 gap-2 px-4 py-3 text-sm">
+        <Metric label="Найдено" value={run.items_found} />
+        <Metric label="Сохранено" value={run.items_saved} />
+        <Metric label="Не сопоставлено" value={unmatched_count} warn={unmatched_count > 0} />
+        <Metric label="Длительность" value={formatDuration(run.duration_sec)} />
+        <Metric label="Начало" value={formatDateTime(run.started_at)} />
+        <Metric label="Конец" value={formatDateTime(run.finished_at)} />
+      </dl>
+
+      {errors.length > 0 ? (
+        <div className="border-t border-slate-100 px-4 py-3">
+          <h3 className="mb-1 text-xs font-semibold uppercase text-rose-700">Ошибки</h3>
+          <ul className="space-y-1 text-xs text-rose-700">
+            {errors.map((e, i) => (
+              <li key={i} className="truncate" title={e}>
+                {e}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {price_samples.length > 0 ? (
+        <div className="border-t border-slate-100 px-4 py-3">
+          <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">
+            Что распарсено (примеры)
+          </h3>
+          <ul className="space-y-2">
+            {price_samples.map((p, i) => (
+              <PriceSampleRow key={i} sample={p} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {unmatched_samples.length > 0 ? (
+        <div className="border-t border-slate-100 px-4 py-3">
+          <h3 className="mb-1 text-xs font-semibold uppercase text-amber-700">
+            Очередь на сопоставление
+          </h3>
+          <ul className="space-y-1 text-xs text-slate-600">
+            {unmatched_samples.map((name, i) => (
+              <li key={i} className="truncate" title={name}>
+                {name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PriceSampleRow({ sample }: { sample: ParsedPriceSample }) {
+  return (
+    <li className="flex items-center justify-between gap-3 text-sm">
+      <div className="min-w-0">
+        <div className="truncate font-medium text-slate-900" title={sample.service_name}>
+          {sample.service_name}
+        </div>
+        <div className="truncate text-xs text-slate-500" title={sample.service_name_raw ?? ""}>
+          {sample.clinic_name}
+          {sample.service_name_raw ? ` · ${sample.service_name_raw}` : ""}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="text-xs text-slate-400" title="Уверенность сопоставления">
+          {Math.round(sample.match_confidence * 100)}%
+        </span>
+        <FreshnessBadge freshness={sample.freshness} ageDays={sample.age_days} />
+        <span className="font-semibold text-slate-900">{formatPrice(sample.price_kzt)}</span>
+      </div>
+    </li>
+  );
+}
+
+function Metric({ label, value, warn }: { label: string; value: string | number; warn?: boolean }) {
+  return (
+    <div>
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className={`font-semibold ${warn ? "text-amber-700" : "text-slate-900"}`}>{value}</dd>
+    </div>
+  );
+}

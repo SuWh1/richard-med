@@ -17,5 +17,29 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: ./backend
+    container_name: richard-med-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-richard_med}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-richard_med}
+      POSTGRES_DB: ${POSTGRES_DB:-richard_med}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:5173}
+      BLUEPRINT_PATH: /docs/MedServicePrice_Winning_Blueprint.xlsx
+    ports:
+      - "${BACKEND_PORT:-8001}:8000"
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+      - ./docs:/docs:ro
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
 volumes:
   postgres-data:

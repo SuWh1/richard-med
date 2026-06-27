@@ -1,10 +1,16 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+
+import { SearchPage } from "@/pages/SearchPage";
+import { DashboardPage } from "@/pages/DashboardPage";
+
 export default function App() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-slate-900">Richard Med</h1>
-        <p className="mt-2 text-slate-500">Сравнение цен на медицинские услуги в Казахстане</p>
-      </div>
+    <main className="min-h-screen bg-slate-50">
+      <Routes>
+        <Route path="/" element={<SearchPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </main>
   );
 }

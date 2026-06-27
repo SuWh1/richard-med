@@ -1,30 +1,68 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
-class ScrapedPrice:
-    """One raw price row as extracted from a source, before normalization."""
+class RawDocument:
+    """A fetched source page, retained as raw evidence before any parsing."""
 
-    source: str
+    source_name: str
     source_url: str
-    clinic_name: str
     city: str | None
+    raw_html: str
+    content_hash: str
+    status_code: int
+    fetched_at: str
+
+
+@dataclass(frozen=True)
+class RawPriceItem:
+    """One price row extracted from a RawDocument, before normalization."""
+
+    source_url: str
+    clinic_raw: str
     service_name_raw: str
-    price_kzt: float
-    currency: str = "KZT"
-    duration_days: int | None = None
+    price_raw: str
+    duration_raw: str | None = None
+    metadata: dict = field(default_factory=dict)
 
 
-class BaseScraper(ABC):
-    """Pluggable scraper interface — one implementation per source.
+@dataclass(frozen=True)
+class SnapshotResult:
+    """Outcome of parsing a saved HTML fixture, for adapter regression tests."""
 
-    Adding a new source must not require changes to the core pipeline.
+    item_count: int
+    sample_items: list[RawPriceItem]
+
+
+class BaseSourceAdapter(ABC):
+    """One adapter per source domain. Adding a source must not touch the pipeline.
+
+    The pipeline owns persistence: adapters never write to the DB. `fetch` produces
+    raw evidence, `parse` extracts rows from one document, `clean` canonicalizes a row.
     """
 
-    source: str
+    @abstractmethod
+    def identity(self) -> str:
+        """Stable source name used for Source Health and provenance (e.g. 'kdl_olymp')."""
+        raise NotImplementedError
 
     @abstractmethod
-    def scrape(self) -> list[ScrapedPrice]:
-        """Fetch and parse the source, returning raw price rows."""
+    def fetch(self, city: str) -> list[RawDocument]:
+        """Fetch source pages for a city and return them as raw evidence."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def parse(self, raw_doc: RawDocument) -> list[RawPriceItem]:
+        """Extract raw price rows from one document. No DB writes."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def clean(self, raw_item: RawPriceItem) -> RawPriceItem:
+        """Canonicalize a raw row (trim, normalize price/duration) without matching."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def test_snapshot(self) -> SnapshotResult:
+        """Parse a saved HTML fixture and return counts + samples for regression tests."""
         raise NotImplementedError

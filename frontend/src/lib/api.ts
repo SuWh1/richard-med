@@ -1,0 +1,57 @@
+import type {
+  ParseRunDetail,
+  ParseRunSummary,
+  RunTrigger,
+  SearchParams,
+  SearchResponse,
+  SourceHealth,
+  Suggestion,
+} from "@/types";
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001/api/v1";
+
+async function getJson<T>(path: string, params: Record<string, unknown>): Promise<T> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
+  }
+  const response = await fetch(`${BASE_URL}${path}?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Запрос не выполнен (${response.status})`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export function fetchSuggestions(q: string): Promise<Suggestion[]> {
+  return getJson<Suggestion[]>("/services", { q, limit: 8 });
+}
+
+export function fetchSearch(params: SearchParams): Promise<SearchResponse> {
+  return getJson<SearchResponse>("/search", { ...params });
+}
+
+export function fetchSourceHealth(): Promise<SourceHealth[]> {
+  return getJson<SourceHealth[]>("/admin/source-health", {});
+}
+
+export function fetchParseRuns(limit = 20): Promise<ParseRunSummary[]> {
+  return getJson<ParseRunSummary[]>("/admin/parse-runs", { limit });
+}
+
+export function fetchRunDetail(runId: number): Promise<ParseRunDetail> {
+  return getJson<ParseRunDetail>(`/admin/parse-runs/${runId}`, {});
+}
+
+export async function triggerRun(source: string | null, city: string): Promise<RunTrigger> {
+  const query = new URLSearchParams({ city });
+  if (source) query.set("source", source);
+  const response = await fetch(`${BASE_URL}/admin/parsers/run?${query.toString()}`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`Не удалось запустить парсер (${response.status})`);
+  }
+  return response.json() as Promise<RunTrigger>;
+}
