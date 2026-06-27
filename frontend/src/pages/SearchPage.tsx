@@ -9,6 +9,7 @@ import { SearchBar } from "@/components/SearchBar";
 import { SortControls } from "@/components/SortControls";
 import { PriceCard } from "@/components/PriceCard";
 import { PricePassport } from "@/components/PricePassport";
+import { ClinicMap } from "@/components/map/ClinicMap";
 
 export function SearchPage() {
   const [input, setInput] = useState("");
@@ -16,6 +17,8 @@ export function SearchPage() {
   const [sort, setSort] = useState<SortKey>("best_value");
   const [includeStale, setIncludeStale] = useState(false);
   const [passport, setPassport] = useState<PriceCardData | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [mobileView, setMobileView] = useState<"list" | "map">("list");
 
   const debounced = useDebounce(input, 250);
 
@@ -44,6 +47,10 @@ export function SearchPage() {
     () => (cards.length ? Math.min(...cards.map((c) => c.price_kzt)) : null),
     [cards],
   );
+  const hasMap = useMemo(
+    () => cards.some((c) => c.lat !== null && c.lng !== null),
+    [cards],
+  );
 
   const runSearch = (q: string) => {
     setInput(q);
@@ -53,7 +60,7 @@ export function SearchPage() {
   const pickSuggestion = (s: Suggestion) => runSearch(s.name_ru);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-8">
       <header className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Richard Med</h1>
@@ -133,15 +140,60 @@ export function SearchPage() {
             </p>
           )}
 
-          <div className="space-y-3">
-            {cards.map((card) => (
-              <PriceCard
-                key={card.price_id}
-                card={card}
-                isCheapest={card.price_kzt === cheapestPrice}
-                onOpenPassport={() => setPassport(card)}
-              />
-            ))}
+          {cards.length > 0 && hasMap && (
+            <div className="flex gap-2 lg:hidden">
+              {(["list", "map"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setMobileView(view)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    mobileView === view
+                      ? "bg-teal-600 text-white"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {view === "list" ? "Список" : "Карта"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className={`grid gap-6 ${hasMap ? "lg:grid-cols-2" : ""}`}>
+            <div
+              className={`space-y-3 ${
+                hasMap && mobileView === "map" ? "hidden lg:block" : ""
+              }`}
+            >
+              {cards.map((card) => (
+                <div
+                  key={card.price_id}
+                  onMouseEnter={() => setSelectedId(card.price_id)}
+                  className={`rounded-xl transition ${
+                    selectedId === card.price_id ? "ring-2 ring-teal-500/60" : ""
+                  }`}
+                >
+                  <PriceCard
+                    card={card}
+                    isCheapest={card.price_kzt === cheapestPrice}
+                    onOpenPassport={() => setPassport(card)}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {hasMap && (
+              <div className={mobileView === "list" ? "hidden lg:block" : ""}>
+                <div className="sticky top-4 h-[60vh] lg:h-[72vh]">
+                  <ClinicMap
+                    cards={cards}
+                    cheapestPrice={cheapestPrice}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

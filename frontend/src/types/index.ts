@@ -43,6 +43,23 @@ export interface SearchResponse {
   count: number;
 }
 
+export interface MapPin {
+  price_id: number;
+  clinic_id: number;
+  clinic_name: string;
+  branch_id: number;
+  city: string | null;
+  address: string | null;
+  lat: number;
+  lng: number;
+  price_kzt: number;
+  parsed_at: string;
+  age_days: number;
+  freshness: Freshness;
+  source_url: string;
+  is_cheapest: boolean;
+}
+
 export interface SearchParams {
   q: string;
   city?: string;

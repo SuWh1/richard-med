@@ -1,6 +1,7 @@
 import type {
   AnalyticsOverview,
   AnalyticsParams,
+  MapPin,
   ParseRunDetail,
   ParseRunSummary,
   PriceCard,
@@ -38,6 +39,14 @@ export function fetchSearch(params: SearchParams): Promise<SearchResponse> {
 
 export function fetchFeatured(limit = 6): Promise<PriceCard[]> {
   return getJson<PriceCard[]>("/search/featured", { limit });
+}
+
+export function fetchMapPins(
+  serviceId: number,
+  city?: string,
+  bbox?: string,
+): Promise<MapPin[]> {
+  return getJson<MapPin[]>("/search/map", { service_id: serviceId, city, bbox });
 }
 
 export function fetchPriceStats(params: AnalyticsParams = {}): Promise<ServicePriceStat[]> {
