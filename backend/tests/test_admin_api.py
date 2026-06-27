@@ -74,7 +74,22 @@ def test_should_accept_run_trigger_for_known_source(monkeypatch):
     body = resp.json()
     assert body["accepted"] is True
     assert body["source_names"] == ["kdl_olymp"]
-    assert calls == [(["kdl_olymp"], "Астана")]
+    assert calls == [(["kdl_olymp"], ["Астана"])]
+
+
+def test_should_expand_all_cities_sentinel_on_trigger(monkeypatch):
+    from app.core.cities import CITY_NAMES
+
+    calls = []
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.admin._run_sources",
+        lambda sources, cities: calls.append((sources, cities)),
+    )
+    resp = client.post(
+        "/api/v1/admin/parsers/run", params={"source": "kdl_olymp", "city": "__all__"}
+    )
+    assert resp.status_code == 200
+    assert calls == [(["kdl_olymp"], list(CITY_NAMES))]
 
 
 def test_should_grow_catalog_and_reparse_after_running_sources(monkeypatch):
@@ -95,7 +110,7 @@ def test_should_grow_catalog_and_reparse_after_running_sources(monkeypatch):
     monkeypatch.setattr(admin_ep, "get_verifier", lambda: None)
     monkeypatch.setattr(admin_ep, "get_embedder", lambda: None)
 
-    admin_ep._run_sources(["kdl_olymp"], "Астана")
+    admin_ep._run_sources(["kdl_olymp"], ["Астана"])
 
     # Source runs, then catalog is grown, then the source is re-parsed so new entries match.
     assert calls == [

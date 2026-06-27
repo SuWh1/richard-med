@@ -219,6 +219,34 @@ def test_should_save_raw_document_evidence(db_session):
     assert all(d.content_hash and d.raw_html for d in docs)
 
 
+class _EmptyDoqAdapter(_StubDoqAdapter):
+    """A source that returns nothing for a city (unsupported / down)."""
+
+    def fetch(self, city: str) -> list[RawDoc]:
+        return []
+
+
+def test_should_not_deactivate_prices_when_a_run_fetches_nothing(db_session):
+    from sqlalchemy import func, select
+
+    run_source(db_session, "doq", "Астана", adapter=_StubDoqAdapter())
+    active_before = db_session.scalar(
+        select(func.count(ClinicServicePrice.id)).where(
+            ClinicServicePrice.is_active.is_(True)
+        )
+    )
+    assert active_before > 0
+
+    # An empty run (e.g. Invitro on Астана) must NOT wipe the source's existing prices.
+    run_source(db_session, "doq", "Астана", adapter=_EmptyDoqAdapter())
+    active_after = db_session.scalar(
+        select(func.count(ClinicServicePrice.id)).where(
+            ClinicServicePrice.is_active.is_(True)
+        )
+    )
+    assert active_after == active_before
+
+
 def test_should_be_idempotent_on_rerun(db_session):
     first = run_source(db_session, "doq", "Астана", adapter=_StubDoqAdapter())
     second = run_source(db_session, "doq", "Астана", adapter=_StubDoqAdapter())

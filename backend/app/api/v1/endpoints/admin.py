@@ -12,6 +12,7 @@ from app.schemas.admin import (
     SourceHealth,
     UnmatchedPage,
 )
+from app.core.cities import CITY_NAMES
 from app.scrapers.registry import available_sources
 from app.services import admin
 from app.services.catalog_grow import grow_catalog
@@ -23,9 +24,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _GROW_BATCH = 25
+ALL_CITIES = "__all__"  # sentinel: run every supported city
 
 
-def _grow_and_reparse(session, source_names: list[str], city: str, embedder) -> None:
+def _grow_and_reparse(
+    session, source_names: list[str], cities: list[str], embedder
+) -> None:
     """After a run, drain the unmatched queue into the catalog and re-parse so the
     newly-added services match instead of lingering as pending suggestions."""
     try:
@@ -38,26 +42,28 @@ def _grow_and_reparse(session, source_names: list[str], city: str, embedder) -> 
                 session.commit()
                 if batch["aliased"] + batch["added"] + batch["deferred"] == 0:
                     break
-        for source in source_names:
-            run_source(session, source, city, publish=True, embedder=embedder)
-            session.commit()
+        for city in cities:
+            for source in source_names:
+                run_source(session, source, city, publish=True, embedder=embedder)
+                session.commit()
     except Exception:  # noqa: BLE001 — growth is best-effort; the run already published
-        logger.exception("catalog grow / re-parse failed for %s/%s", source_names, city)
+        logger.exception("catalog grow / re-parse failed for %s/%s", source_names, cities)
         session.rollback()
 
 
-def _run_sources(source_names: list[str], city: str) -> None:
+def _run_sources(source_names: list[str], cities: list[str]) -> None:
     session = SessionLocal()
     embedder = get_embedder()
     try:
-        for source in source_names:
-            try:
-                run_source(session, source, city, publish=True, embedder=embedder)
-                session.commit()
-            except Exception:  # noqa: BLE001 — isolate one source from the rest
-                logger.exception("background run failed for %s", source)
-                session.rollback()
-        _grow_and_reparse(session, source_names, city, embedder)
+        for city in cities:
+            for source in source_names:
+                try:
+                    run_source(session, source, city, publish=True, embedder=embedder)
+                    session.commit()
+                except Exception:  # noqa: BLE001 — isolate one source/city from the rest
+                    logger.exception("background run failed for %s/%s", source, city)
+                    session.rollback()
+        _grow_and_reparse(session, source_names, cities, embedder)
     finally:
         session.close()
 
@@ -66,19 +72,21 @@ def _run_sources(source_names: list[str], city: str) -> None:
 def trigger_run(
     background_tasks: BackgroundTasks,
     source: str | None = Query(None, description="Source name; omit to run all sources"),
-    city: str = Query("Астана"),
+    city: str = Query("Астана", description=f"City name, or '{ALL_CITIES}' for every city"),
 ) -> RunTrigger:
     sources = available_sources() if source is None else [source]
     unknown = [s for s in sources if s not in available_sources()]
     if unknown:
         raise HTTPException(status_code=404, detail=f"Unknown source(s): {unknown}")
 
-    background_tasks.add_task(_run_sources, sources, city)
+    cities = list(CITY_NAMES) if city == ALL_CITIES else [city]
+    background_tasks.add_task(_run_sources, sources, cities)
+    where = "всех городов" if city == ALL_CITIES else f"города {city}"
     return RunTrigger(
         accepted=True,
         source_names=sources,
         city=city,
-        message=f"Запущен парсинг ({', '.join(sources)}) для города {city}.",
+        message=f"Запущен парсинг ({', '.join(sources)}) для {where}.",
     )
 
 

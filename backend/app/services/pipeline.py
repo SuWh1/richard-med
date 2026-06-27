@@ -349,7 +349,11 @@ def run_source(
                 logger.exception("item failed: %s", item.service_name_raw)
                 errors.append(f"{item.service_name_raw}: {exc}")
 
-    _deactivate_stale(session, source_name, city, seen_price_ids, now)
+    # Only retire stale prices when the source actually returned data this run. An empty
+    # fetch (unsupported city, or the source is down) must keep prior prices — never wipe
+    # a city just because one run came back empty.
+    if docs:
+        _deactivate_stale(session, source_name, city, seen_price_ids, now)
 
     run.status = "partial" if errors else "success"
     run.finished_at = datetime.now(UTC)
