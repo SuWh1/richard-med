@@ -73,12 +73,20 @@ def _add_alias(session: Session, service_id: int, alias: str) -> None:
         )
 
 
-def grow_catalog(session: Session, verifier: _Verifier | None = None) -> dict[str, int]:
-    """Process the pending unmatched queue into new catalog entries or aliases."""
-    rows = session.scalars(
-        select(UnmatchedService).where(UnmatchedService.status == "pending")
-    ).all()
-    added = aliased = skipped = 0
+def grow_catalog(
+    session: Session, verifier: _Verifier | None = None, limit: int | None = None
+) -> dict[str, int]:
+    """Process the pending unmatched queue into new catalog entries or aliases.
+
+    `limit` bounds how many rows a single call processes, so a caller can drive the
+    slow AI path in committed batches (short transactions) without this function
+    committing itself (tests rely on rollback isolation).
+    """
+    stmt = select(UnmatchedService).where(UnmatchedService.status == "pending")
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    rows = session.scalars(stmt).all()
+    added = aliased = skipped = deferred = 0
 
     for item in rows:
         if item.suggested_service_id is None:
@@ -88,7 +96,7 @@ def grow_catalog(session: Session, verifier: _Verifier | None = None) -> dict[st
             continue
 
         if verifier is None:
-            skipped += 1
+            skipped += 1  # gray zone needs AI — leave pending for a later run
             continue
 
         candidate = session.get(Service, item.suggested_service_id)
@@ -102,6 +110,7 @@ def grow_catalog(session: Session, verifier: _Verifier | None = None) -> dict[st
             item.status = "added"
             added += 1
         else:
-            skipped += 1
+            item.status = "deferred"  # AI undecided — don't re-spam it
+            deferred += 1
 
-    return {"added": added, "aliased": aliased, "skipped": skipped}
+    return {"added": added, "aliased": aliased, "skipped": skipped, "deferred": deferred}

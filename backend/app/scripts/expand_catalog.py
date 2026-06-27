@@ -17,12 +17,26 @@ from app.services.pipeline import run_source
 def main() -> None:
     session = SessionLocal()
     try:
-        result = grow_catalog(session, verifier=get_verifier())
+        # Phase 1: the "nothing similar" tests — add all at once (no AI, one transaction).
+        base = grow_catalog(session)
         session.commit()
-        print(
-            f"catalog grown: +{result['added']} new entries, "
-            f"+{result['aliased']} aliases, {result['skipped']} left for AI"
-        )
+        print(f"catalog grown: +{base['added']} new entries (nothing similar)")
+
+        # Phase 2: the look-alikes — AI-arbitrated in committed batches (short transactions).
+        verifier = get_verifier()
+        if verifier is not None:
+            aliased = added = deferred = 0
+            while True:
+                batch = grow_catalog(session, verifier=verifier, limit=25)
+                session.commit()
+                aliased += batch["aliased"]
+                added += batch["added"]
+                deferred += batch["deferred"]
+                if batch["aliased"] + batch["added"] + batch["deferred"] == 0:
+                    break
+            print(f"AI gray-zone: +{aliased} aliases, +{added} entries, {deferred} undecided")
+        else:
+            print("(no GEMINI_API_KEY — look-alikes left pending)")
 
         print("re-parsing so the new entries match…")
         for source in available_sources():
