@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { ParsedPriceSample } from "@/types";
+import type { ParseRunSummary, ParsedPriceSample } from "@/types";
 import {
   fetchParseRuns,
   fetchRunDetail,
@@ -25,30 +25,97 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const [city, setCity] = useState(CITIES[0]);
   const [selectedRun, setSelectedRun] = useState<number | null>(null);
+  // Sources the user just triggered, before a "running" row appears in the data.
+  const [triggeredAt, setTriggeredAt] = useState<Record<string, number>>({});
+  const [, forceTick] = useState(0);
+  const busyRef = useRef(false);
 
   const healthQuery = useQuery({
     queryKey: ["source-health"],
     queryFn: fetchSourceHealth,
+    refetchInterval: () => (busyRef.current ? 2000 : false),
   });
   const runsQuery = useQuery({
     queryKey: ["parse-runs"],
     queryFn: () => fetchParseRuns(20),
-    refetchInterval: (query) =>
-      (query.state.data ?? []).some((r) => r.status === "running") ? 4000 : false,
+    refetchInterval: () => (busyRef.current ? 2000 : false),
   });
+
+  const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data]);
+
+  // Latest run per source (runs come newest-first) → which sources are mid-parse.
+  const latestBySource = useMemo(() => {
+    const map = new Map<string, ParseRunSummary>();
+    for (const r of runs) if (!map.has(r.source_name)) map.set(r.source_name, r);
+    return map;
+  }, [runs]);
+
+  const runningSources = useMemo(
+    () =>
+      new Set(
+        [...latestBySource.values()]
+          .filter((r) => r.status === "running")
+          .map((r) => r.source_name),
+      ),
+    [latestBySource],
+  );
+
+  // Hand off from the optimistic flag to data once our triggered run shows up.
+  useEffect(() => {
+    setTriggeredAt((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [source, at] of Object.entries(prev)) {
+        const latest = latestBySource.get(source);
+        if (latest && new Date(latest.started_at).getTime() >= at - 1000) {
+          delete next[source];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [latestBySource]);
+
+  const isBusy = (source: string) =>
+    triggeredAt[source] !== undefined || runningSources.has(source);
+  const anyBusy = (healthQuery.data ?? []).some((h) => isBusy(h.source_name));
+  busyRef.current = anyBusy;
+
+  // Tick once a second while parsing so elapsed timers advance.
+  useEffect(() => {
+    if (!anyBusy) return;
+    const id = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [anyBusy]);
 
   const runMutation = useMutation({
     mutationFn: (source: string | null) => triggerRun(source, city),
-    onSuccess: () => {
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["parse-runs"] });
-        queryClient.invalidateQueries({ queryKey: ["source-health"] });
-      }, 1500);
+    onMutate: (source) => {
+      const sources = source ? [source] : (healthQuery.data ?? []).map((h) => h.source_name);
+      const stamp = Date.now();
+      setTriggeredAt((prev) => ({
+        ...prev,
+        ...Object.fromEntries(sources.map((s) => [s, stamp])),
+      }));
+    },
+    onError: (_e, source) => {
+      const sources = source ? [source] : (healthQuery.data ?? []).map((h) => h.source_name);
+      setTriggeredAt((prev) => {
+        const next = { ...prev };
+        for (const s of sources) delete next[s];
+        return next;
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["parse-runs"] });
+      queryClient.invalidateQueries({ queryKey: ["source-health"] });
     },
   });
 
-  const pending = runMutation.isPending;
-  const pendingSource = runMutation.variables;
+  const runningRunFor = (source: string) => {
+    const latest = latestBySource.get(source);
+    return latest && latest.status === "running" ? latest : null;
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -63,7 +130,8 @@ export function DashboardPage() {
           <select
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
+            disabled={anyBusy}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm disabled:opacity-50"
           >
             {CITIES.map((c) => (
               <option key={c}>{c}</option>
@@ -71,10 +139,10 @@ export function DashboardPage() {
           </select>
           <button
             onClick={() => runMutation.mutate(null)}
-            disabled={pending}
-            className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-50"
+            disabled={anyBusy}
+            className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Запустить все
+            {anyBusy ? "Идёт парсинг…" : "Запустить все"}
           </button>
           <Link to="/" className="text-sm font-medium text-sky-700 hover:underline">
             ← К поиску
@@ -82,11 +150,6 @@ export function DashboardPage() {
         </div>
       </header>
 
-      {runMutation.isSuccess ? (
-        <p className="mb-4 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-          {runMutation.data.message} Данные обновятся автоматически.
-        </p>
-      ) : null}
       {runMutation.isError ? (
         <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {(runMutation.error as Error).message}
@@ -98,7 +161,8 @@ export function DashboardPage() {
           <SourceHealthCard
             key={health.source_name}
             health={health}
-            running={pending && pendingSource === health.source_name}
+            busy={isBusy(health.source_name)}
+            runningSince={runningRunFor(health.source_name)?.started_at ?? null}
             onRun={() => runMutation.mutate(health.source_name)}
           />
         ))}
@@ -106,11 +170,7 @@ export function DashboardPage() {
       </section>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <RunHistory
-          runs={runsQuery.data ?? []}
-          selectedRun={selectedRun}
-          onSelect={setSelectedRun}
-        />
+        <RunHistory runs={runs} selectedRun={selectedRun} onSelect={setSelectedRun} />
         <RunDetailPanel runId={selectedRun} />
       </div>
     </div>
@@ -122,7 +182,7 @@ function RunHistory({
   selectedRun,
   onSelect,
 }: {
-  runs: import("@/types").ParseRunSummary[];
+  runs: ParseRunSummary[];
   selectedRun: number | null;
   onSelect: (id: number) => void;
 }) {

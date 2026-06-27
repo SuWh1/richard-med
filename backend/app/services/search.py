@@ -8,6 +8,7 @@ from app.models import (
     Clinic,
     ClinicBranch,
     ClinicServicePrice,
+    RawPriceItem,
     Service,
     ServiceAlias,
 )
@@ -38,6 +39,7 @@ class PriceCard:
     service_name: str
     clinic_id: int
     clinic_name: str
+    doctor_name: str | None
     branch_id: int | None
     city: str | None
     address: str | None
@@ -141,10 +143,18 @@ def prices_for_service(
     ).cast(Float)
 
     stmt = (
-        select(ClinicServicePrice, Clinic, ClinicBranch, Service, age_days.label("age"))
+        select(
+            ClinicServicePrice,
+            Clinic,
+            ClinicBranch,
+            Service,
+            RawPriceItem.metadata_json,
+            age_days.label("age"),
+        )
         .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
         .join(Service, ClinicServicePrice.service_id == Service.id)
         .outerjoin(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
+        .outerjoin(RawPriceItem, ClinicServicePrice.raw_price_item_id == RawPriceItem.id)
         .where(
             ClinicServicePrice.service_id == service_id,
             ClinicServicePrice.is_active.is_(True),
@@ -159,36 +169,84 @@ def prices_for_service(
     if not include_stale:
         stmt = stmt.where(age_days <= STALE_DAYS)
 
-    cards: list[PriceCard] = []
-    for price, clinic, branch, service, age in session.execute(stmt):
-        age_int = int(age)
-        cards.append(
-            PriceCard(
-                price_id=price.id,
-                service_id=service.id,
-                service_name=service.name_ru,
-                clinic_id=clinic.id,
-                clinic_name=clinic.name,
-                branch_id=branch.id if branch else None,
-                city=branch.city if branch else None,
-                address=branch.address if branch else None,
-                lat=branch.lat if branch else None,
-                lng=branch.lng if branch else None,
-                price_kzt=price.price_kzt,
-                duration_min=price.duration_min,
-                duration_max=price.duration_max,
-                parsed_at=price.parsed_at,
-                age_days=age_int,
-                freshness=_freshness(age_int),
-                source_url=price.source_url,
-                service_name_raw=price.service_name_raw,
-                content_hash=price.content_hash,
-                match_confidence=price.match_confidence,
-                match_method=price.match_method,
-            )
-        )
-
+    cards = [
+        _build_card(price, clinic, branch, service, metadata, int(age))
+        for price, clinic, branch, service, metadata, age in session.execute(stmt)
+    ]
     return _sort_cards(cards, sort)
+
+
+def _doctor_name(metadata: dict | None) -> str | None:
+    name = (metadata or {}).get("doctor")
+    return name.strip() if isinstance(name, str) and name.strip() else None
+
+
+def _build_card(
+    price: ClinicServicePrice,
+    clinic: Clinic,
+    branch: ClinicBranch | None,
+    service: Service,
+    metadata: dict | None,
+    age_days: int,
+) -> PriceCard:
+    return PriceCard(
+        price_id=price.id,
+        service_id=service.id,
+        service_name=service.name_ru,
+        clinic_id=clinic.id,
+        clinic_name=clinic.name,
+        doctor_name=_doctor_name(metadata),
+        branch_id=branch.id if branch else None,
+        city=branch.city if branch else None,
+        address=branch.address if branch else None,
+        lat=branch.lat if branch else None,
+        lng=branch.lng if branch else None,
+        price_kzt=price.price_kzt,
+        duration_min=price.duration_min,
+        duration_max=price.duration_max,
+        parsed_at=price.parsed_at,
+        age_days=age_days,
+        freshness=_freshness(age_days),
+        source_url=price.source_url,
+        service_name_raw=price.service_name_raw,
+        content_hash=price.content_hash,
+        match_confidence=price.match_confidence,
+        match_method=price.match_method,
+    )
+
+
+def featured_cards(session: Session, limit: int = 6) -> list[PriceCard]:
+    """A random sample of fresh active prices for the landing page (no query)."""
+    now = datetime.now(UTC)
+    age_days = func.floor(
+        func.extract("epoch", now - ClinicServicePrice.parsed_at) / 86400.0
+    ).cast(Float)
+
+    stmt = (
+        select(
+            ClinicServicePrice,
+            Clinic,
+            ClinicBranch,
+            Service,
+            RawPriceItem.metadata_json,
+            age_days.label("age"),
+        )
+        .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
+        .join(Service, ClinicServicePrice.service_id == Service.id)
+        .outerjoin(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
+        .outerjoin(RawPriceItem, ClinicServicePrice.raw_price_item_id == RawPriceItem.id)
+        .where(
+            ClinicServicePrice.is_active.is_(True),
+            age_days <= STALE_DAYS,
+        )
+        .order_by(func.random())
+        .limit(limit)
+    )
+
+    return [
+        _build_card(price, clinic, branch, service, metadata, int(age))
+        for price, clinic, branch, service, metadata, age in session.execute(stmt)
+    ]
 
 
 def _sort_cards(cards: list[PriceCard], sort: str) -> list[PriceCard]:

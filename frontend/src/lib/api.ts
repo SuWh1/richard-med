@@ -1,9 +1,13 @@
 import type {
+  AnalyticsOverview,
+  AnalyticsParams,
   ParseRunDetail,
   ParseRunSummary,
+  PriceCard,
   RunTrigger,
   SearchParams,
   SearchResponse,
+  ServicePriceStat,
   SourceHealth,
   Suggestion,
 } from "@/types";
@@ -30,6 +34,20 @@ export function fetchSuggestions(q: string): Promise<Suggestion[]> {
 
 export function fetchSearch(params: SearchParams): Promise<SearchResponse> {
   return getJson<SearchResponse>("/search", { ...params });
+}
+
+export function fetchFeatured(limit = 6): Promise<PriceCard[]> {
+  return getJson<PriceCard[]>("/search/featured", { limit });
+}
+
+export function fetchPriceStats(params: AnalyticsParams = {}): Promise<ServicePriceStat[]> {
+  return getJson<ServicePriceStat[]>("/analytics/price-stats", { ...params });
+}
+
+export function fetchAnalyticsOverview(
+  params: Pick<AnalyticsParams, "city" | "include_stale"> = {},
+): Promise<AnalyticsOverview> {
+  return getJson<AnalyticsOverview>("/analytics/overview", { ...params });
 }
 
 export function fetchSourceHealth(): Promise<SourceHealth[]> {

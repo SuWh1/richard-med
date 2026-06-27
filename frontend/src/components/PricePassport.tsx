@@ -43,6 +43,7 @@ export function PricePassport({
         <dl>
           <Row label="Цена" value={formatPrice(card.price_kzt)} />
           <Row label="Услуга (нормализовано)" value={card.service_name} />
+          {card.doctor_name && <Row label="Врач" value={card.doctor_name} />}
           <Row
             label="Исходное название источника"
             value={card.service_name_raw ?? "—"}

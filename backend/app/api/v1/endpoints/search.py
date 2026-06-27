@@ -2,10 +2,18 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.search import SearchResponse
+from app.schemas.search import PriceCard, SearchResponse
 from app.services import search
 
 router = APIRouter()
+
+
+@router.get("/featured", response_model=list[PriceCard])
+def featured_services(
+    limit: int = Query(6, ge=1, le=24),
+    db: Session = Depends(get_db),
+) -> list[PriceCard]:
+    return search.featured_cards(db, limit=limit)
 
 
 @router.get("", response_model=SearchResponse)

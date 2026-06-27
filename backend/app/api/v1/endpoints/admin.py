@@ -23,7 +23,7 @@ def _run_sources(source_names: list[str], city: str) -> None:
     try:
         for source in source_names:
             try:
-                run_source(session, source, city)
+                run_source(session, source, city, publish=True)
                 session.commit()
             except Exception:  # noqa: BLE001 — isolate one source from the rest
                 logger.exception("background run failed for %s", source)

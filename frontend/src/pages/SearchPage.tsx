@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import type { PriceCard as PriceCardData, SortKey, Suggestion } from "@/types";
-import { fetchSearch, fetchSuggestions } from "@/lib/api";
+import { fetchFeatured, fetchSearch, fetchSuggestions } from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
 import { SearchBar } from "@/components/SearchBar";
 import { SortControls } from "@/components/SortControls";
@@ -31,6 +31,14 @@ export function SearchPage() {
     enabled: submitted.trim().length >= 2,
   });
 
+  const isSearching = submitted.trim().length >= 2;
+
+  const featuredQuery = useQuery({
+    queryKey: ["featured"],
+    queryFn: () => fetchFeatured(6),
+    enabled: !isSearching,
+  });
+
   const cards = searchQuery.data?.cards ?? [];
   const cheapestPrice = useMemo(
     () => (cards.length ? Math.min(...cards.map((c) => c.price_kzt)) : null),
@@ -53,12 +61,14 @@ export function SearchPage() {
             Сравните реальные цены на медицинские услуги в Казахстане
           </p>
         </div>
-        <Link
-          to="/dashboard"
-          className="shrink-0 text-sm font-medium text-sky-700 hover:underline"
-        >
-          Источники данных →
-        </Link>
+        <nav className="flex shrink-0 gap-4 text-sm font-medium text-sky-700">
+          <Link to="/analytics" className="hover:underline">
+            Аналитика
+          </Link>
+          <Link to="/dashboard" className="hover:underline">
+            Источники данных →
+          </Link>
+        </nav>
       </header>
 
       <SearchBar
@@ -69,7 +79,25 @@ export function SearchPage() {
         onPick={pickSuggestion}
       />
 
-      {submitted.length >= 2 && (
+      {!isSearching && (
+        <div className="mt-8 space-y-4">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-slate-400">
+            Примеры услуг
+          </h2>
+          <div className="space-y-3">
+            {(featuredQuery.data ?? []).map((card) => (
+              <PriceCard
+                key={card.price_id}
+                card={card}
+                isCheapest={false}
+                onOpenPassport={() => setPassport(card)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isSearching && (
         <div className="mt-6 space-y-4">
           {searchQuery.data?.resolved_service && (
             <div className="flex items-baseline justify-between">

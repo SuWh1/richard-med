@@ -112,14 +112,19 @@ class DoqAdapter(BaseSourceAdapter):
                     continue
                 location = branch.get("location") or {}
                 phones = branch.get("phones") or []
+                # Emit our canonical specialization label (bridged to the catalog's
+                # "Прием <specialist>" entries via seeded aliases) and keep DOQ's own
+                # free-form service name as evidence in metadata.
+                label = SPECIALIZATIONS.get(target) or service.get("name", "")
                 items.append(
                     RawPriceItem(
-                        source_url=f"https://doq.kz/doctors/{doctor.get('slug', '')}",
+                        source_url=f"https://doq.kz/doctor/{doctor.get('slug', '')}",
                         clinic_raw=branch.get("name"),
-                        service_name_raw=service.get("name", ""),
+                        service_name_raw=label,
                         price_raw=str(price),
                         metadata={
-                            "specialization": SPECIALIZATIONS.get(target),
+                            "specialization": label,
+                            "doq_service_name": service.get("name"),
                             "doctor": doctor.get("name"),
                             "city": raw_doc.city,
                             "address": branch.get("address"),

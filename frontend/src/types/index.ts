@@ -16,6 +16,7 @@ export interface PriceCard {
   service_name: string;
   clinic_id: number;
   clinic_name: string;
+  doctor_name: string | null;
   branch_id: number | null;
   city: string | null;
   address: string | null;
@@ -106,4 +107,49 @@ export interface RunTrigger {
   source_names: string[];
   city: string;
   message: string;
+}
+
+export interface ServicePriceStat {
+  service_id: number;
+  service_name: string;
+  category: string;
+  city: string | null;
+  clinic_count: number;
+  price_count: number;
+  min_kzt: number;
+  max_kzt: number;
+  avg_kzt: number;
+  median_kzt: number;
+  spread_pct: number;
+  freshest_parsed_at: string;
+}
+
+export interface CategoryStat {
+  category: string;
+  service_count: number;
+  price_count: number;
+  min_kzt: number;
+  max_kzt: number;
+  median_kzt: number;
+}
+
+export interface CityCoverage {
+  city: string;
+  price_count: number;
+  service_count: number;
+}
+
+export interface AnalyticsOverview {
+  city: string | null;
+  total_prices: number;
+  total_services: number;
+  categories: CategoryStat[];
+  cities: CityCoverage[];
+}
+
+export interface AnalyticsParams {
+  city?: string;
+  category?: string;
+  include_stale?: boolean;
+  limit?: number;
 }

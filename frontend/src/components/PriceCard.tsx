@@ -16,7 +16,7 @@ export function PriceCard({
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <span className="text-base font-semibold text-slate-900">
-            {card.clinic_name}
+            {card.service_name}
           </span>
           {isCheapest && (
             <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white">
@@ -24,8 +24,15 @@ export function PriceCard({
             </span>
           )}
         </div>
+        {card.doctor_name && (
+          <span className="text-sm font-medium text-slate-700">
+            {card.doctor_name}
+          </span>
+        )}
         <span className="text-sm text-slate-500">
-          {[card.city, card.address].filter(Boolean).join(", ") || "Адрес уточняется"}
+          {card.clinic_name}
+          {(card.city || card.address) &&
+            ` · ${[card.city, card.address].filter(Boolean).join(", ")}`}
         </span>
         <div className="mt-1">
           <FreshnessBadge freshness={card.freshness} ageDays={card.age_days} />

@@ -164,16 +164,20 @@ def _upsert_price(
 
 
 def run_source(
-    session: Session, source_name: str, city: str, adapter=None
+    session: Session, source_name: str, city: str, adapter=None, publish: bool = False
 ) -> RunResult:
     """Run one source for one city through the full pipeline with error isolation.
 
     `adapter` is injectable for tests; in production it is resolved from the registry.
+    When `publish` is set (background runs), the "running" row is committed up front so
+    pollers see live progress; tests leave it off to keep transaction isolation.
     """
     now = datetime.now(UTC)
     run = ParseRun(source_name=source_name, city=city, status="running", started_at=now)
     session.add(run)
     session.flush()
+    if publish:
+        session.commit()
 
     if adapter is None:
         adapter = get_adapter(source_name)
@@ -196,6 +200,9 @@ def run_source(
         return RunResult(run.id, source_name, city, "failed", 0, 0, 0, str(exc))
 
     matcher = ServiceMatcher(session)
+    queued_unmatched = set(
+        session.scalars(select(UnmatchedService.raw_name)).all()
+    )
 
     for doc in docs:
         try:
@@ -226,15 +233,17 @@ def run_source(
 
                 result = matcher.match(item.service_name_raw)
                 if result.service_id is None or result.confidence < MATCH_FLOOR:
-                    session.add(
-                        UnmatchedService(
-                            raw_item_id=raw_row.id,
-                            raw_name=item.service_name_raw,
-                            suggested_service_id=result.service_id,
-                            confidence=result.confidence,
+                    if item.service_name_raw not in queued_unmatched:
+                        session.add(
+                            UnmatchedService(
+                                raw_item_id=raw_row.id,
+                                raw_name=item.service_name_raw,
+                                suggested_service_id=result.service_id,
+                                confidence=result.confidence,
+                            )
                         )
-                    )
-                    unmatched += 1
+                        queued_unmatched.add(item.service_name_raw)
+                        unmatched += 1
                     continue
 
                 clinic = _get_or_create_clinic(

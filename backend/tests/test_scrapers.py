@@ -25,7 +25,11 @@ def test_should_extract_doq_visit_prices_for_target_specialization():
     item = result.sample_items[0]
     assert item.price_raw.isdigit() and int(item.price_raw) > 0
     assert item.clinic_raw
+    # Emits our canonical label (alias-matchable to "Прием терапевта"), keeps DOQ's
+    # own service name as evidence.
+    assert item.service_name_raw == "Терапевт"
     assert item.metadata["specialization"] == "Терапевт"
+    assert item.metadata["doq_service_name"]
     assert item.metadata["lat"] and item.metadata["lng"]
 
 

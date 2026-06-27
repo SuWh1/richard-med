@@ -21,6 +21,7 @@ class PriceCard(BaseModel):
     service_name: str
     clinic_id: int
     clinic_name: str
+    doctor_name: str | None
     branch_id: int | None
     city: str | None
     address: str | None
