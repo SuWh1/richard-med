@@ -4,6 +4,12 @@ export type SortKey = "best_value" | "cheapest" | "newest";
 
 export type City = "Астана" | "Алматы" | "Караганда" | "Актобе";
 
+export interface CityInfo {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 export interface Suggestion {
   id: number;
   name_ru: string;

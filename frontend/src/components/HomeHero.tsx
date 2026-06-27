@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { Clock, MapPin, Shield } from "lucide-react";
 
-import type { City } from "@/types";
 import { POPULAR_SERVICES } from "@/lib/constants";
 
 const TRUST = [
@@ -11,7 +10,7 @@ const TRUST = [
 ];
 
 interface HomeHeroProps {
-  city: City;
+  city: string;
   searchBar: ReactNode;
   onPickPopular: (query: string) => void;
 }

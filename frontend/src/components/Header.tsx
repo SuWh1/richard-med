@@ -1,8 +1,6 @@
 import { Link } from "react-router-dom";
 import { MapPin } from "lucide-react";
 
-import type { City } from "@/types";
-import { CITIES } from "@/lib/constants";
 import {
   Select,
   SelectContent,
@@ -12,11 +10,12 @@ import {
 } from "@/components/ui/select";
 
 interface HeaderProps {
-  city: City;
-  onCityChange: (city: City) => void;
+  city: string;
+  onCityChange: (city: string) => void;
+  cities: string[];
 }
 
-export function Header({ city, onCityChange }: HeaderProps) {
+export function Header({ city, onCityChange, cities }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center border-b border-border bg-white">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-5">
@@ -33,13 +32,13 @@ export function Header({ city, onCityChange }: HeaderProps) {
 
         <div className="flex-1" />
 
-        <Select value={city} onValueChange={(value) => onCityChange(value as City)}>
-          <SelectTrigger className="h-9 w-[150px] gap-1.5 border-transparent text-muted-foreground hover:bg-secondary">
+        <Select value={city} onValueChange={onCityChange}>
+          <SelectTrigger className="h-9 w-[170px] gap-1.5 border-transparent text-muted-foreground hover:bg-secondary">
             <MapPin className="h-3.5 w-3.5 text-primary" />
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
-            {CITIES.map((c) => (
+          <SelectContent className="max-h-72">
+            {cities.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
               </SelectItem>

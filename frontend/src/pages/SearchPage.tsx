@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import type { City, PriceCard as PriceCardData, SortKey, Suggestion } from "@/types";
-import { fetchSearch, fetchSuggestions } from "@/lib/api";
+import type { PriceCard as PriceCardData, SortKey, Suggestion } from "@/types";
+import { fetchCities, fetchMapPins, fetchSearch, fetchSuggestions } from "@/lib/api";
 import { buildCompareHref } from "@/lib/compare";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Header } from "@/components/Header";
@@ -16,19 +16,27 @@ import { PricePassport } from "@/components/PricePassport";
 import { ClinicMap } from "@/components/map/ClinicMap";
 
 export function SearchPage() {
-  const [city, setCity] = useState<City>("Астана");
+  const [city, setCity] = useState("Астана");
   const [input, setInput] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [sort, setSort] = useState<SortKey>("best_value");
   const [includeStale, setIncludeStale] = useState(false);
   const [passport, setPassport] = useState<PriceCardData | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const [compareIds, setCompareIds] = useState<number[]>([]);
 
   const navigate = useNavigate();
   const debounced = useDebounce(input, 250);
   const isSearching = submitted.trim().length >= 2;
+
+  const citiesQuery = useQuery({ queryKey: ["cities"], queryFn: fetchCities });
+  const cities = citiesQuery.data ?? [];
+  const cityNames = cities.length ? cities.map((c) => c.name) : ["Астана", "Алматы"];
+  const cityCenter = useMemo<[number, number] | null>(() => {
+    const found = cities.find((c) => c.name === city);
+    return found ? [found.lat, found.lng] : null;
+  }, [cities, city]);
 
   const suggestionsQuery = useQuery({
     queryKey: ["suggestions", debounced],
@@ -47,15 +55,20 @@ export function SearchPage() {
     () => (cards.length ? Math.min(...cards.map((c) => c.price_kzt)) : null),
     [cards],
   );
-  const hasMap = useMemo(
-    () => cards.some((c) => c.lat !== null && c.lng !== null),
-    [cards],
-  );
+  const resolvedId = searchQuery.data?.resolved_service?.id ?? null;
+
+  const mapQuery = useQuery({
+    queryKey: ["map-pins", resolvedId, city],
+    queryFn: () => fetchMapPins(resolvedId as number, city),
+    enabled: isSearching && resolvedId !== null,
+  });
+  const pins = mapQuery.data ?? [];
+  const hasMap = pins.length > 0;
 
   const runSearch = (q: string) => {
     setInput(q);
     setSubmitted(q);
-    setSelectedId(null);
+    setSelectedClinicId(null);
     setCompareIds([]);
   };
   const pickSuggestion = (s: Suggestion) => runSearch(s.name_ru);
@@ -64,7 +77,6 @@ export function SearchPage() {
     setCompareIds((ids) =>
       ids.includes(clinicId) ? ids.filter((i) => i !== clinicId) : [...ids, clinicId],
     );
-  const resolvedId = searchQuery.data?.resolved_service?.id ?? null;
 
   const searchBar = (
     <SearchBar
@@ -78,7 +90,7 @@ export function SearchPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <Header city={city} onCityChange={setCity} />
+      <Header city={city} onCityChange={setCity} cities={cityNames} />
 
       {!isSearching ? (
         <HomeHero city={city} searchBar={searchBar} onPickPopular={runSearch} />
@@ -151,8 +163,8 @@ export function SearchPage() {
                   key={card.price_id}
                   card={card}
                   isCheapest={card.price_kzt === cheapestPrice}
-                  isHighlighted={selectedId === card.price_id}
-                  onHover={setSelectedId}
+                  isHighlighted={selectedClinicId === card.clinic_id}
+                  onHover={() => setSelectedClinicId(card.clinic_id)}
                   onPassport={() => setPassport(card)}
                   onCompare={() => toggleCompare(card.clinic_id)}
                   onDetail={() => navigate(`/clinics/${card.clinic_id}`)}
@@ -165,10 +177,10 @@ export function SearchPage() {
               <div className={mobileView === "list" ? "hidden lg:block" : ""}>
                 <div className="sticky top-20 h-[60vh] lg:h-[72vh]">
                   <ClinicMap
-                    cards={cards}
-                    cheapestPrice={cheapestPrice}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
+                    pins={pins}
+                    selectedClinicId={selectedClinicId}
+                    onSelectClinic={setSelectedClinicId}
+                    center={cityCenter}
                   />
                 </div>
               </div>

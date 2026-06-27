@@ -1,6 +1,7 @@
 import type {
   AnalyticsOverview,
   AnalyticsParams,
+  CityInfo,
   ClinicDetail,
   ClinicServiceRow,
   CompareResult,
@@ -34,6 +35,10 @@ async function getJson<T>(path: string, params: Record<string, unknown>): Promis
 
 export function fetchSuggestions(q: string): Promise<Suggestion[]> {
   return getJson<Suggestion[]>("/services", { q, limit: 8 });
+}
+
+export function fetchCities(): Promise<CityInfo[]> {
+  return getJson<CityInfo[]>("/search/cities", {});
 }
 
 export function fetchSearch(params: SearchParams): Promise<SearchResponse> {

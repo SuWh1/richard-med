@@ -3,26 +3,17 @@ import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import type { PriceCard } from "@/types";
+import type { MapPin } from "@/types";
 import { formatPrice, freshnessLabel } from "@/lib/format";
 
 interface ClinicMapProps {
-  cards: PriceCard[];
-  cheapestPrice: number | null;
-  selectedId: number | null;
-  onSelect: (priceId: number) => void;
+  pins: MapPin[];
+  selectedClinicId: number | null;
+  onSelectClinic: (clinicId: number | null) => void;
+  center: [number, number] | null;
 }
 
-interface PlottableCard extends PriceCard {
-  lat: number;
-  lng: number;
-}
-
-const ALMATY: [number, number] = [43.238949, 76.945465];
-
-function isPlottable(card: PriceCard): card is PlottableCard {
-  return card.lat !== null && card.lng !== null;
-}
+const KZ_CENTER: [number, number] = [48.0196, 66.9237];
 
 function pinIcon(
   label: string,
@@ -30,43 +21,50 @@ function pinIcon(
 ): L.DivIcon {
   const bg = state.stale ? "#94a3b8" : state.cheapest ? "#16a34a" : "#0e9f8e";
   const ring = state.selected
-    ? "box-shadow:0 0 0 3px rgba(14,159,142,.5);transform:translate(-50%,-100%) scale(1.08);"
+    ? "box-shadow:0 0 0 3px rgba(14,159,142,.5);transform:translate(-50%,-100%) scale(1.1);z-index:10000;"
     : "transform:translate(-50%,-100%);";
   const html =
     `<div style="${ring}background:${bg};color:#fff;padding:3px 9px;border-radius:9999px;` +
     `font:600 12px/1.2 Inter,system-ui,sans-serif;white-space:nowrap;` +
     `border:1px solid rgba(255,255,255,.8);box-shadow:0 1px 4px rgba(15,23,42,.25)">${label}</div>`;
-  // Anchor at [0,0]; the inner div translates itself so the pill points at the coordinate.
   return L.divIcon({ html, className: "", iconSize: [0, 0], iconAnchor: [0, 0] });
 }
 
-function routeUrl(card: PlottableCard): string {
-  return `https://www.google.com/maps/dir/?api=1&destination=${card.lat},${card.lng}`;
+function routeUrl(pin: MapPin): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${pin.lat},${pin.lng}`;
 }
 
-function FitBounds({ points }: { points: [number, number][] }) {
+function FitBounds({
+  points,
+  center,
+}: {
+  points: [number, number][];
+  center: [number, number] | null;
+}) {
   const map = useMap();
   useEffect(() => {
-    if (points.length === 0) return;
+    if (points.length === 0) {
+      if (center) map.setView(center, 12);
+      return;
+    }
     if (points.length === 1) {
       map.setView(points[0], 13);
       return;
     }
     map.fitBounds(points, { padding: [48, 48] });
-  }, [map, points]);
+  }, [map, points, center]);
   return null;
 }
 
-export function ClinicMap({ cards, cheapestPrice, selectedId, onSelect }: ClinicMapProps) {
-  const pins = useMemo(() => cards.filter(isPlottable), [cards]);
+export function ClinicMap({ pins, selectedClinicId, onSelectClinic, center }: ClinicMapProps) {
   const points = useMemo<[number, number][]>(
-    () => pins.map((c) => [c.lat, c.lng]),
+    () => pins.map((p) => [p.lat, p.lng]),
     [pins],
   );
 
   return (
     <MapContainer
-      center={points[0] ?? ALMATY}
+      center={center ?? points[0] ?? KZ_CENTER}
       zoom={12}
       scrollWheelZoom
       className="h-full w-full rounded-xl"
@@ -75,33 +73,31 @@ export function ClinicMap({ cards, cheapestPrice, selectedId, onSelect }: Clinic
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitBounds points={points} />
-      {pins.map((card) => (
+      <FitBounds points={points} center={center} />
+      {pins.map((pin) => (
         <Marker
-          key={card.price_id}
-          position={[card.lat, card.lng]}
-          icon={pinIcon(formatPrice(card.price_kzt), {
-            cheapest: card.price_kzt === cheapestPrice,
-            selected: card.price_id === selectedId,
-            stale: card.freshness === "stale",
+          key={pin.branch_id}
+          position={[pin.lat, pin.lng]}
+          icon={pinIcon(formatPrice(pin.price_kzt), {
+            cheapest: pin.is_cheapest,
+            selected: pin.clinic_id === selectedClinicId,
+            stale: pin.freshness === "stale",
           })}
-          eventHandlers={{ click: () => onSelect(card.price_id) }}
+          eventHandlers={{ click: () => onSelectClinic(pin.clinic_id) }}
         >
           <Popup>
             <div className="space-y-1">
-              <p className="font-semibold text-slate-900">{card.clinic_name}</p>
-              <p className="text-lg font-bold text-slate-900">
-                {formatPrice(card.price_kzt)}
-              </p>
+              <p className="font-semibold text-slate-900">{pin.clinic_name}</p>
+              <p className="text-lg font-bold text-slate-900">{formatPrice(pin.price_kzt)}</p>
               <p className="text-xs text-slate-500">
-                {freshnessLabel(card.freshness, card.age_days)}
+                {freshnessLabel(pin.freshness, pin.age_days)}
               </p>
-              {card.address && <p className="text-xs text-slate-500">{card.address}</p>}
+              {pin.address && <p className="text-xs text-slate-500">{pin.address}</p>}
               <div className="flex gap-3 pt-1 text-xs font-medium text-teal-700">
-                <a href={routeUrl(card)} target="_blank" rel="noreferrer">
+                <a href={routeUrl(pin)} target="_blank" rel="noreferrer">
                   Маршрут
                 </a>
-                <a href={card.source_url} target="_blank" rel="noreferrer">
+                <a href={pin.source_url} target="_blank" rel="noreferrer">
                   Открыть источник
                 </a>
               </div>
