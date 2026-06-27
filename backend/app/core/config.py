@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
 
+    # Geocoding (offline only — clinic addresses → lat/lng). Empty key disables it.
+    YANDEX_GEOCODER_API_KEY: str = ""
+    YANDEX_GEOCODER_URL: str = "https://geocode-maps.yandex.ru/v1"
+
     @property
     def database_url(self) -> str:
         return (
