@@ -1,10 +1,14 @@
 from app.scrapers.base import BaseSourceAdapter
 from app.scrapers.doq import DoqAdapter
+from app.scrapers.helix import HelixAdapter
+from app.scrapers.invitro import InvitroAdapter
 from app.scrapers.kdl_olymp import KdlOlympAdapter
 
 _ADAPTERS: dict[str, type[BaseSourceAdapter]] = {
     "kdl_olymp": KdlOlympAdapter,
     "doq": DoqAdapter,
+    "invitro": InvitroAdapter,
+    "helix": HelixAdapter,
 }
 
 

@@ -76,7 +76,9 @@ class ClinicServicePrice(Base):
     raw_price_item_id: Mapped[int | None] = mapped_column(
         ForeignKey("raw_price_items.id", ondelete="SET NULL")
     )
-    city: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Non-null: the active-price key is (clinic, service, city); a NULL city breaks the
+    # upsert's dedup (SQL `city = NULL` is never true) and escapes city-scoped staling.
+    city: Mapped[str] = mapped_column(String(64), index=True)
     price_kzt: Mapped[int] = mapped_column(Integer)
     duration_min: Mapped[int | None] = mapped_column(Integer)
     duration_max: Mapped[int | None] = mapped_column(Integer)

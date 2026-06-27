@@ -4,6 +4,16 @@ export type SortKey = "best_value" | "cheapest" | "newest";
 
 export type City = "Астана" | "Алматы" | "Караганда" | "Актобе";
 
+export type ServiceCategory = "лаборатория" | "приём врача" | "диагностика" | "процедура";
+
+// User-facing categories (the quarantine "прочее" is hidden from search).
+export const USER_CATEGORIES: ServiceCategory[] = [
+  "лаборатория",
+  "приём врача",
+  "диагностика",
+  "процедура",
+];
+
 export interface CityInfo {
   name: string;
   lat: number;
@@ -14,6 +24,7 @@ export interface Suggestion {
   id: number;
   name_ru: string;
   category: string;
+  specialty: string | null;
   score: number;
   has_prices: boolean;
 }
@@ -124,6 +135,7 @@ export interface CompareResult {
 export interface SearchParams {
   q: string;
   city?: string;
+  category?: string;
   sort?: SortKey;
   include_stale?: boolean;
   price_min?: number;
@@ -230,4 +242,45 @@ export interface AnalyticsParams {
   category?: string;
   include_stale?: boolean;
   limit?: number;
+}
+
+export interface CatalogServiceRow {
+  id: number;
+  name_ru: string;
+  category: string;
+  origin: "catalog" | "auto";
+  alias_count: number;
+  price_count: number;
+}
+
+export interface CatalogPage {
+  total: number;
+  items: CatalogServiceRow[];
+}
+
+export interface CatalogParams {
+  q?: string;
+  category?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface UnmatchedRow {
+  id: number;
+  raw_name: string;
+  suggested_name: string | null;
+  suggested_category: string | null;
+  confidence: number;
+  status: string;
+}
+
+export interface UnmatchedPage {
+  total: number;
+  items: UnmatchedRow[];
+}
+
+export interface UnmatchedParams {
+  status?: string;
+  limit?: number;
+  offset?: number;
 }

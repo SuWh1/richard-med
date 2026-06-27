@@ -15,6 +15,35 @@ def test_should_report_health_for_known_sources():
     assert "active_prices" in row
 
 
+def test_should_list_catalog_services_with_counts():
+    resp = client.get("/api/v1/admin/services", params={"limit": 5})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] >= 1
+    assert len(body["items"]) <= 5
+    row = body["items"][0]
+    assert {"id", "name_ru", "category", "origin", "alias_count", "price_count"} <= row.keys()
+    assert row["origin"] in ("catalog", "auto")
+
+
+def test_should_filter_catalog_services_by_query():
+    resp = client.get("/api/v1/admin/services", params={"q": "анализ", "limit": 10})
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert all("анализ" in r["name_ru"].lower() for r in items)
+
+
+def test_should_list_unmatched_review_queue():
+    resp = client.get("/api/v1/admin/unmatched", params={"status": "pending", "limit": 5})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "total" in body and isinstance(body["items"], list)
+    if body["items"]:
+        row = body["items"][0]
+        assert {"id", "raw_name", "suggested_name", "confidence", "status"} <= row.keys()
+        assert row["status"] == "pending"
+
+
 def test_should_list_recent_parse_runs():
     resp = client.get("/api/v1/admin/parse-runs", params={"limit": 5})
     assert resp.status_code == 200
@@ -46,3 +75,31 @@ def test_should_accept_run_trigger_for_known_source(monkeypatch):
     assert body["accepted"] is True
     assert body["source_names"] == ["kdl_olymp"]
     assert calls == [(["kdl_olymp"], "Астана")]
+
+
+def test_should_grow_catalog_and_reparse_after_running_sources(monkeypatch):
+    from app.api.v1.endpoints import admin as admin_ep
+
+    calls = []
+    monkeypatch.setattr(
+        admin_ep,
+        "run_source",
+        lambda session, source, city, **kw: calls.append(("run", source)),
+    )
+    monkeypatch.setattr(
+        admin_ep,
+        "grow_catalog",
+        lambda session, **kw: calls.append(("grow", kw.get("verifier") is not None))
+        or {"added": 0, "aliased": 0, "skipped": 0, "deferred": 0},
+    )
+    monkeypatch.setattr(admin_ep, "get_verifier", lambda: None)
+    monkeypatch.setattr(admin_ep, "get_embedder", lambda: None)
+
+    admin_ep._run_sources(["kdl_olymp"], "Астана")
+
+    # Source runs, then catalog is grown, then the source is re-parsed so new entries match.
+    assert calls == [
+        ("run", "kdl_olymp"),
+        ("grow", False),
+        ("run", "kdl_olymp"),
+    ]

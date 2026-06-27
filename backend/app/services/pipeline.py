@@ -205,6 +205,8 @@ def run_source(
     When `publish` is set (background runs), the "running" row is committed up front so
     pollers see live progress; tests leave it off to keep transaction isolation.
     """
+    if not city or not city.strip():
+        raise ValueError("run_source requires a non-empty city")
     now = datetime.now(UTC)
     run = ParseRun(source_name=source_name, city=city, status="running", started_at=now)
     session.add(run)

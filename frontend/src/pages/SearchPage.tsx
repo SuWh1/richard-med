@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import type { PriceCard as PriceCardData, SortKey, Suggestion } from "@/types";
+import { USER_CATEGORIES } from "@/types";
 import { fetchCities, fetchMapPins, fetchSearch, fetchSuggestions } from "@/lib/api";
 import { buildCompareHref } from "@/lib/compare";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -19,6 +20,7 @@ export function SearchPage() {
   const [city, setCity] = useState("Астана");
   const [input, setInput] = useState("");
   const [submitted, setSubmitted] = useState("");
+  const [category, setCategory] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("best_value");
   const [includeStale, setIncludeStale] = useState(false);
   const [passport, setPassport] = useState<PriceCardData | null>(null);
@@ -39,16 +41,27 @@ export function SearchPage() {
   }, [cities, city]);
 
   const suggestionsQuery = useQuery({
-    queryKey: ["suggestions", debounced],
-    queryFn: () => fetchSuggestions(debounced),
+    queryKey: ["suggestions", debounced, category],
+    queryFn: () => fetchSuggestions(debounced, category ?? undefined),
     enabled: debounced.trim().length >= 2,
   });
 
   const searchQuery = useQuery({
-    queryKey: ["search", submitted, city, sort, includeStale],
-    queryFn: () => fetchSearch({ q: submitted, city, sort, include_stale: includeStale }),
+    queryKey: ["search", submitted, city, category, sort, includeStale],
+    queryFn: () =>
+      fetchSearch({
+        q: submitted,
+        city,
+        category: category ?? undefined,
+        sort,
+        include_stale: includeStale,
+      }),
     enabled: isSearching,
   });
+
+  const didYouMean = searchQuery.data?.resolved_service
+    ? []
+    : (searchQuery.data?.suggestions ?? []);
 
   const cards = searchQuery.data?.cards ?? [];
   const cheapestPrice = useMemo(
@@ -98,6 +111,34 @@ export function SearchPage() {
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
           <div className="mb-6">{searchBar}</div>
 
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setCategory(null)}
+              className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+                category === null
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:bg-secondary/70"
+              }`}
+            >
+              Все
+            </button>
+            {USER_CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setCategory((c) => (c === cat ? null : cat))}
+                className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+                  category === cat
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-muted-foreground hover:bg-secondary/70"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
           {searchQuery.data?.resolved_service && (
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="text-lg font-semibold text-foreground">
@@ -146,7 +187,29 @@ export function SearchPage() {
               Не удалось загрузить цены. Попробуйте ещё раз.
             </p>
           )}
-          {searchQuery.isSuccess && cards.length === 0 && (
+          {searchQuery.isSuccess && cards.length === 0 && didYouMean.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                По запросу «{submitted}» точного совпадения нет. Возможно, вы имели в виду:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {didYouMean.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => runSearch(s.name_ru)}
+                    className="rounded-full border border-border bg-white px-3 py-1.5 text-sm text-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    {s.name_ru}
+                    {s.specialty && (
+                      <span className="ml-1 text-xs text-muted-foreground">· {s.specialty}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {searchQuery.isSuccess && cards.length === 0 && didYouMean.length === 0 && (
             <p className="text-sm text-muted-foreground">
               По запросу «{submitted}» цены не найдены. Попробуйте уточнить услугу.
             </p>

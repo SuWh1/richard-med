@@ -9,6 +9,7 @@ class Suggestion(BaseModel):
     id: int
     name_ru: str
     category: str
+    specialty: str | None
     score: float
     has_prices: bool
 

@@ -56,3 +56,31 @@ class RunTrigger(BaseModel):
     source_names: list[str]
     city: str
     message: str
+
+
+class CatalogServiceRow(BaseModel):
+    id: int
+    name_ru: str
+    category: str
+    origin: str  # "catalog" (imported/seeded) | "auto" (grown from source data)
+    alias_count: int
+    price_count: int
+
+
+class CatalogPage(BaseModel):
+    total: int
+    items: list[CatalogServiceRow]
+
+
+class UnmatchedRow(BaseModel):
+    id: int
+    raw_name: str
+    suggested_name: str | None
+    suggested_category: str | None
+    confidence: float
+    status: str
+
+
+class UnmatchedPage(BaseModel):
+    total: int
+    items: list[UnmatchedRow]

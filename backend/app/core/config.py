@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     GEMINI_URL: str = "https://generativelanguage.googleapis.com/v1beta/models"
+    # Min seconds between verify calls, to respect free-tier RPM (15 RPM → 4s; 0 = off).
+    GEMINI_MIN_INTERVAL_SEC: float = 4.5
 
     @property
     def database_url(self) -> str:

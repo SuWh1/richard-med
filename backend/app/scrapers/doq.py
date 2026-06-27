@@ -1,6 +1,9 @@
 import json
+import logging
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
+
+import httpx
 
 from app.scrapers.base import (
     BaseSourceAdapter,
@@ -9,6 +12,8 @@ from app.scrapers.base import (
     SnapshotResult,
 )
 from app.scrapers.http import PoliteClient, content_hash
+
+logger = logging.getLogger(__name__)
 
 API_URL = "https://api.doq.kz/api/v1/doctors/"
 _FIXTURE = (
@@ -74,7 +79,18 @@ class DoqAdapter(BaseSourceAdapter):
             for service_id in SPECIALIZATIONS:
                 for page in range(_MAX_PAGES):
                     url = _query_url(city_id, service_id, offset=page * _PAGE_SIZE)
-                    response = client.get(url)
+                    try:
+                        response = client.get(url)
+                    except httpx.HTTPError as exc:
+                        # One flaky page must not lose the other specializations: skip the
+                        # rest of this one and keep collecting (Rule: isolate failures).
+                        logger.warning(
+                            "doq fetch failed for service=%s page=%s (%s)",
+                            service_id,
+                            page,
+                            type(exc).__name__,
+                        )
+                        break
                     text = response.text
                     docs.append(
                         RawDocument(
@@ -135,6 +151,9 @@ class DoqAdapter(BaseSourceAdapter):
                     )
                 )
         return items
+
+    def default_category(self) -> str:
+        return "приём врача"  # DOQ aggregates doctor visits
 
     def clean(self, raw_item: RawPriceItem) -> RawPriceItem:
         digits = "".join(ch for ch in (raw_item.price_raw or "") if ch.isdigit())

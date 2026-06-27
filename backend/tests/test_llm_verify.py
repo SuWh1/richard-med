@@ -1,6 +1,7 @@
 import httpx
+import pytest
 
-from app.services.llm_verify import LlmVerifier, parse_verdict
+from app.services.llm_verify import LlmVerifier, TransientVerifyError, parse_verdict
 
 
 def _response(text: str) -> httpx.Response:
@@ -10,6 +11,12 @@ def _response(text: str) -> httpx.Response:
         json={"candidates": [{"content": {"parts": [{"text": text}]}}]},
         request=request,
     )
+
+
+def _status_error(code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", "https://x")
+    response = httpx.Response(code, request=request)
+    return httpx.HTTPStatusError(str(code), request=request, response=response)
 
 
 class _FakeClient:
@@ -54,10 +61,41 @@ def test_should_reject_a_non_match():
     assert verifier.verify("Лептин", "Ликвор") is False
 
 
-def test_should_return_none_on_http_error():
-    request = httpx.Request("POST", "https://x")
-    error = httpx.HTTPStatusError(
-        "400", request=request, response=httpx.Response(400, request=request)
-    )
-    verifier = _verifier(_FakeClient(error=error))
+def test_should_return_none_on_non_retryable_http_error():
+    verifier = _verifier(_FakeClient(error=_status_error(400)))
     assert verifier.verify("a", "b") is None
+
+
+def test_should_raise_transient_on_rate_limit():
+    verifier = _verifier(_FakeClient(error=_status_error(429)))
+    with pytest.raises(TransientVerifyError):
+        verifier.verify("a", "b")
+
+
+def test_should_raise_transient_on_server_error():
+    verifier = _verifier(_FakeClient(error=_status_error(503)))
+    with pytest.raises(TransientVerifyError):
+        verifier.verify("a", "b")
+
+
+def test_should_raise_transient_on_network_error():
+    request = httpx.Request("POST", "https://x")
+    verifier = _verifier(_FakeClient(error=httpx.ConnectError("boom", request=request)))
+    with pytest.raises(TransientVerifyError):
+        verifier.verify("a", "b")
+
+
+def test_should_space_calls_to_respect_rate_limit():
+    # A fake clock that doesn't advance on its own → the throttle must sleep the full
+    # interval before the second call (the first call is never delayed).
+    slept: list[float] = []
+    clock = iter([0.0, 0.0, 0.0, 0.0])
+    verifier = LlmVerifier(
+        "k", "m", "https://api/models", _FakeClient(response=_response("Yes")),
+        min_interval=4.5, sleeper=slept.append, clock=lambda: next(clock),
+    )
+
+    verifier.verify("a", "b")
+    verifier.verify("c", "d")
+
+    assert slept == [4.5]
