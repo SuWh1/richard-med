@@ -106,7 +106,7 @@ Astana + Almaty, <1s search.
 | Database | PostgreSQL 16 + **pgvector** (semantic search) + `pg_trgm`/full-text (lexical) — image `pgvector/pgvector:pg16` |
 | Parsing | Python adapters (`requests`/`httpx` + BeautifulSoup; Playwright only if needed) |
 | Matching | RapidFuzz (fuzzy) + **multilingual embeddings** (e.g. `multilingual-e5`, local/no-API) for semantic |
-| Map | Leaflet + OpenStreetMap tiles (self-stored coordinates) |
+| Map | Leaflet + OpenStreetMap tiles for display; **Yandex Geocoder API** (address→lat/lng, run offline) for coordinates |
 
 ## 7. Repository layout
 
@@ -315,6 +315,46 @@ uvicorn app.main:app --reload                   # http://localhost:8000/docs
 cd frontend && npm install && cp .env.example .env
 npm run dev                                      # http://localhost:5173
 ```
+
+---
+
+## 17. Current status vs plan (2026-06-27)
+
+**Done & plan-aligned (backend):** data model (§8) incl. versioned prices + pgvector
+column; parser pipeline (§6) with raw evidence, source isolation, versioned upsert,
+unmatched queue; KDL + DOQ adapters on the contract; DB-only search with lexical
+autocomplete + freshness + sorts; catalog import; Alembic migration (vector + pg_trgm +
+GIN trigram indexes); TDD with `should` tests. Admin Source Health derived from `parse_runs`.
+
+**Built ahead of scope:** price **Analytics** (per-service min/max/avg/median, category
+ranges, city coverage) — a roadmap/buyout feature. Keep as a bonus tab; don't expand it
+further until Map + core screens land.
+
+**Map — DONE (headline differentiator):** `/search/map` endpoint + `map_pins` service
+(geocoded, fresh, active rows; bbox/city filters; cheapest flag), Leaflet + OSM map on the
+results page with price pins (normal/cheapest/selected/stale states), popups (price +
+freshness + route/source actions), list↔map hover sync, and a mobile Список/Карта toggle.
+The results map reuses the `/search` payload (cards carry lat/lng) for one-call sync;
+`/search/map` serves standalone/bbox browsing. All TDD (geocoding + map_pins covered).
+
+**Gaps to close (priority order):**
+1. **Compare** table + **Clinic detail** page/endpoints missing.
+2. **Semantic/vector layer scaffolded but unwired** — `embedding` column + `vector`
+   extension exist, but no embeddings are generated, no HNSW index, waterfall stops at
+   fuzzy. Treat as optional/post-MVP until we decide to wire it.
+3. Frontend not yet on shadcn (Figma in progress) — map/components restyle pass pending.
+4. Marker clustering deferred (pins render directly; fine for dozens). Add a
+   react-leaflet@5-compatible cluster lib later if pin counts grow.
+
+**Geocoding decision:** clinic addresses → lat/lng via the **Yandex Geocoder API**
+(`https://geocode-maps.yandex.ru/v1`, `format=json`, `lang=ru_RU`). Implemented in
+`app/services/geocoding.py` and run via the **backfill script**
+`app/scripts/geocode_branches.py` — **never in the user path or inline in a parse run**
+(keeps the pipeline deterministic). Cache results on `clinic_branches` (skip rows that
+already have coords); respect 429 rate limits. Note: the
+response `Point.pos` is `"longitude latitude"` (lon first). The geocoder is **not** a tile
+provider — map *display* stays Leaflet + OSM. Key supplied later via env
+`YANDEX_GEOCODER_API_KEY`; until then, fall back to seeded lat/lng for demo branches.
 
 ---
 
