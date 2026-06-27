@@ -46,3 +46,22 @@ class SearchResponse(BaseModel):
     suggestions: list[Suggestion]
     cards: list[PriceCard]
     count: int
+
+
+class MapPin(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    price_id: int
+    clinic_id: int
+    clinic_name: str
+    branch_id: int
+    city: str | None
+    address: str | None
+    lat: float
+    lng: float
+    price_kzt: int
+    parsed_at: datetime
+    age_days: int
+    freshness: str
+    source_url: str
+    is_cheapest: bool

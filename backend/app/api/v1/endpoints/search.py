@@ -1,11 +1,23 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.search import PriceCard, SearchResponse
+from app.schemas.search import MapPin, PriceCard, SearchResponse
 from app.services import search
 
 router = APIRouter()
+
+
+def _parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
+    if bbox is None:
+        return None
+    try:
+        min_lng, min_lat, max_lng, max_lat = (float(p) for p in bbox.split(","))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="bbox must be 'min_lng,min_lat,max_lng,max_lat'"
+        ) from exc
+    return (min_lng, min_lat, max_lng, max_lat)
 
 
 @router.get("/featured", response_model=list[PriceCard])
@@ -45,3 +57,13 @@ def search_services(
         cards=cards,
         count=len(cards),
     )
+
+
+@router.get("/map", response_model=list[MapPin])
+def map_prices(
+    service_id: int = Query(..., ge=1),
+    city: str | None = None,
+    bbox: str | None = Query(None, description="min_lng,min_lat,max_lng,max_lat"),
+    db: Session = Depends(get_db),
+) -> list[MapPin]:
+    return search.map_pins(db, service_id, city=city, bbox=_parse_bbox(bbox))

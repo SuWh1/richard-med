@@ -58,6 +58,24 @@ class PriceCard:
     match_method: str | None
 
 
+@dataclass(frozen=True)
+class MapPin:
+    price_id: int
+    clinic_id: int
+    clinic_name: str
+    branch_id: int
+    city: str | None
+    address: str | None
+    lat: float
+    lng: float
+    price_kzt: int
+    parsed_at: datetime
+    age_days: int
+    freshness: str
+    source_url: str
+    is_cheapest: bool
+
+
 def _freshness(age_days: int) -> str:
     if age_days <= FRESH_DAYS:
         return "fresh"
@@ -247,6 +265,76 @@ def featured_cards(session: Session, limit: int = 6) -> list[PriceCard]:
         _build_card(price, clinic, branch, service, metadata, int(age))
         for price, clinic, branch, service, metadata, age in session.execute(stmt)
     ]
+
+
+def map_pins(
+    session: Session,
+    service_id: int,
+    *,
+    city: str | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
+) -> list[MapPin]:
+    """Active, fresh, geocoded prices for a service as map pins. DB-only (Rule 1).
+
+    `bbox` is (min_lng, min_lat, max_lng, max_lat) — Leaflet's `toBBoxString` order.
+    """
+    now = datetime.now(UTC)
+    age_days = func.floor(
+        func.extract("epoch", now - ClinicServicePrice.parsed_at) / 86400.0
+    ).cast(Float)
+
+    stmt = (
+        select(ClinicServicePrice, Clinic, ClinicBranch, age_days.label("age"))
+        .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
+        .join(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
+        .where(
+            ClinicServicePrice.service_id == service_id,
+            ClinicServicePrice.is_active.is_(True),
+            ClinicBranch.lat.is_not(None),
+            ClinicBranch.lng.is_not(None),
+            age_days <= STALE_DAYS,
+        )
+    )
+    if city:
+        stmt = stmt.where(ClinicBranch.city == city)
+    if bbox is not None:
+        min_lng, min_lat, max_lng, max_lat = bbox
+        stmt = stmt.where(
+            ClinicBranch.lng >= min_lng,
+            ClinicBranch.lng <= max_lng,
+            ClinicBranch.lat >= min_lat,
+            ClinicBranch.lat <= max_lat,
+        )
+
+    rows = session.execute(stmt).all()
+    if not rows:
+        return []
+
+    cheapest_price = min(price.price_kzt for price, _clinic, _branch, _age in rows)
+    pins: list[MapPin] = []
+    cheapest_flagged = False
+    for price, clinic, branch, age in rows:
+        is_cheapest = not cheapest_flagged and price.price_kzt == cheapest_price
+        cheapest_flagged = cheapest_flagged or is_cheapest
+        pins.append(
+            MapPin(
+                price_id=price.id,
+                clinic_id=clinic.id,
+                clinic_name=clinic.name,
+                branch_id=branch.id,
+                city=branch.city,
+                address=branch.address,
+                lat=branch.lat,
+                lng=branch.lng,
+                price_kzt=price.price_kzt,
+                parsed_at=price.parsed_at,
+                age_days=int(age),
+                freshness=_freshness(int(age)),
+                source_url=price.source_url,
+                is_cheapest=is_cheapest,
+            )
+        )
+    return pins
 
 
 def _sort_cards(cards: list[PriceCard], sort: str) -> list[PriceCard]:
