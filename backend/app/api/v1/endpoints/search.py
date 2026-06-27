@@ -4,10 +4,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.schemas.clinics import CompareResult
 from app.schemas.search import MapPin, PriceCard, SearchResponse
-from app.services import search
+from app.services import clinics, search
 
 router = APIRouter()
+
+
+def _parse_clinic_ids(clinic_ids: str) -> list[int]:
+    try:
+        ids = [int(p) for p in clinic_ids.split(",") if p.strip()]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="clinic_ids must be comma-separated integers"
+        ) from exc
+    if not ids:
+        raise HTTPException(status_code=422, detail="clinic_ids must not be empty")
+    return ids
 
 
 def _parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
@@ -74,3 +87,15 @@ def map_prices(
     db: Session = Depends(get_db),
 ) -> list[MapPin]:
     return search.map_pins(db, service_id, city=city, bbox=_parse_bbox(bbox))
+
+
+@router.get("/compare", response_model=CompareResult)
+def compare_clinics(
+    service_id: int = Query(..., ge=1),
+    clinic_ids: str = Query(..., description="comma-separated clinic ids"),
+    db: Session = Depends(get_db),
+) -> CompareResult:
+    result = clinics.compare(db, service_id, _parse_clinic_ids(clinic_ids))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return result
