@@ -4,9 +4,9 @@ import type { Freshness } from "@/types";
 import { freshnessLabel } from "@/lib/format";
 
 const STYLES: Record<Freshness, { className: string; Icon: typeof Check }> = {
-  fresh: { className: "bg-[#DCFCE7] text-[#16A34A]", Icon: Check },
-  recent: { className: "bg-[#F1F5F9] text-[#475569]", Icon: Clock },
-  stale: { className: "bg-[#FEF3C7] text-[#D97706]", Icon: AlertTriangle },
+  fresh: { className: "bg-success-soft text-success", Icon: Check },
+  recent: { className: "bg-secondary text-secondary-foreground", Icon: Clock },
+  stale: { className: "bg-warning-soft text-warning", Icon: AlertTriangle },
 };
 
 interface FreshBadgeProps {

@@ -16,10 +16,10 @@ function statusOf(health: SourceHealth): { variant: StatusVariant; text: string 
 }
 
 const DOT: Record<StatusVariant, string> = {
-  success: "bg-[#16A34A]",
-  warning: "bg-[#D97706]",
-  error: "bg-[#DC2626]",
-  neutral: "bg-[#CBD5E1]",
+  success: "bg-success",
+  warning: "bg-warning",
+  error: "bg-danger",
+  neutral: "bg-faintest",
 };
 
 interface SourceHealthCardProps {
@@ -72,7 +72,7 @@ export function SourceHealthCard({ health, busy, onRun }: SourceHealthCardProps)
           type="button"
           onClick={onRun}
           disabled={busy}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-[#CBD5E1] transition-colors hover:bg-secondary hover:text-primary disabled:opacity-50"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-faintest transition-colors hover:bg-secondary hover:text-primary disabled:opacity-50"
           aria-label="Запустить парсер"
         >
           <RotateCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} />

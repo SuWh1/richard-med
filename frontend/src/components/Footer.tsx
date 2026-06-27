@@ -6,8 +6,8 @@ export function Footer() {
           Информация о ценах носит справочный характер. Перед лечением обратитесь к
           врачу.
         </p>
-        <p className="mt-1 text-[11px] text-[#CBD5E1]">
-          © 2025 Richard Med · Все права защищены
+        <p className="mt-1 text-[11px] text-faintest">
+          © {new Date().getFullYear()} Richard Med · Все права защищены
         </p>
       </div>
     </footer>

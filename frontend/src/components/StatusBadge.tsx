@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 export type StatusVariant = "success" | "warning" | "error" | "neutral";
 
 const VARIANTS: Record<StatusVariant, string> = {
-  success: "bg-[#DCFCE7] text-[#16A34A]",
-  warning: "bg-[#FEF3C7] text-[#D97706]",
-  error: "bg-[#FEE2E2] text-[#DC2626]",
-  neutral: "bg-[#F1F5F9] text-[#475569]",
+  success: "bg-success-soft text-success",
+  warning: "bg-warning-soft text-warning",
+  error: "bg-danger-soft text-danger",
+  neutral: "bg-secondary text-secondary-foreground",
 };
 
 interface StatusBadgeProps {

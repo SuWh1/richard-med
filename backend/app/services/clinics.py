@@ -104,6 +104,8 @@ def clinic_services(
     session: Session, clinic_id: int, *, include_stale: bool = False
 ) -> list[ClinicServiceRow]:
     age = _age_expr()
+    # DISTINCT ON keeps one row per service (its cheapest active offer), so a clinic
+    # with many branches/cities doesn't return the same service dozens of times.
     stmt = (
         select(ClinicServicePrice, Service, ClinicBranch, age.label("age"))
         .join(Service, ClinicServicePrice.service_id == Service.id)
@@ -112,12 +114,13 @@ def clinic_services(
             ClinicServicePrice.clinic_id == clinic_id,
             ClinicServicePrice.is_active.is_(True),
         )
-        .order_by(ClinicServicePrice.price_kzt)
+        .order_by(ClinicServicePrice.service_id, ClinicServicePrice.price_kzt)
+        .distinct(ClinicServicePrice.service_id)
     )
     if not include_stale:
         stmt = stmt.where(age <= STALE_DAYS)
 
-    return [
+    rows = [
         ClinicServiceRow(
             service_id=service.id,
             service_name=service.name_ru,
@@ -132,6 +135,8 @@ def clinic_services(
         )
         for price, service, branch, age_days in session.execute(stmt)
     ]
+    rows.sort(key=lambda r: r.price_kzt)
+    return rows
 
 
 def compare(

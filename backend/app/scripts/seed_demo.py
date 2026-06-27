@@ -137,7 +137,7 @@ def seed_demo(session: Session) -> dict:
     def get_doc(source: str, city: str) -> RawDocument:
         key = (source, city)
         if key not in docs:
-            url = f"{clinics[source].website_url}/pricelist/{city.lower()}"
+            url = clinics[source].website_url
             html = f"<html><body>price list for {source} {city}</body></html>"
             doc = RawDocument(
                 source_name=source,

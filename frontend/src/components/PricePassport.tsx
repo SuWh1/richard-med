@@ -108,7 +108,7 @@ export function PricePassport({ card, onClose }: PricePassportProps) {
                 href={card.source_url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-[#0b8a7a]"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
               >
                 <ExternalLink className="h-4 w-4" /> Открыть источник
               </a>

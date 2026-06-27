@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import type { CategoryStat, ServicePriceStat } from "@/types";
@@ -13,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PriceRangeBar } from "@/components/PriceRangeBar";
+import { AppShell } from "@/components/AppShell";
 
 const ALL = "all";
 const CITY_OPTIONS = ["Астана", "Алматы"];
@@ -41,17 +41,13 @@ export function AnalyticsPage() {
   const stats = statsQuery.data ?? [];
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <header className="mb-6 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Аналитика цен</h1>
-          <p className="text-sm text-muted-foreground">
-            Диапазоны цен по услугам и категориям на основе собранных данных
-          </p>
-        </div>
-        <Link to="/" className="shrink-0 text-sm font-medium text-primary hover:underline">
-          ← К поиску
-        </Link>
+    <AppShell breadcrumb={[{ label: "Аналитика цен" }]} city={city || "Все города"}>
+      <div className="mx-auto max-w-4xl px-4 py-8">
+      <header className="mb-6">
+        <h1 className="text-xl font-semibold text-foreground">Аналитика цен</h1>
+        <p className="text-sm text-muted-foreground">
+          Диапазоны цен по услугам и категориям на основе собранных данных
+        </p>
       </header>
 
       <div className="mb-6 flex flex-wrap gap-3">
@@ -92,7 +88,7 @@ export function AnalyticsPage() {
 
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          По услугам — диапазон между клиниками
+          По услугам · диапазон между клиниками
         </h2>
         {statsQuery.isLoading && <p className="text-sm text-muted-foreground">Загрузка…</p>}
         {statsQuery.isError && (
@@ -112,7 +108,8 @@ export function AnalyticsPage() {
         Средние значения рассчитаны по одной услуге между клиниками. Устаревшие цены
         (старше 30 дней) исключены. Информация носит справочный характер.
       </footer>
-    </div>
+      </div>
+    </AppShell>
   );
 }
 
@@ -184,7 +181,7 @@ function ServiceStatRow({ stat }: { stat: ServicePriceStat }) {
         </span>
         <span className="text-xs text-muted-foreground">в среднем</span>
         {multi && stat.spread_pct > 0 && (
-          <span className="text-xs font-medium text-[#D97706]">
+          <span className="text-xs font-medium text-warning">
             разброс {Math.round(stat.spread_pct)}%
           </span>
         )}
@@ -200,7 +197,7 @@ function ServiceStatRow({ stat }: { stat: ServicePriceStat }) {
         </div>
       ) : (
         <p className="mt-2 text-xs text-muted-foreground">
-          Одна клиника — диапазон недоступен
+          Одна клиника · диапазон недоступен
         </p>
       )}
     </article>

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import Float, func, or_, select
+from sqlalchemy import Float, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.cities import CITIES, City
@@ -250,12 +250,28 @@ def _build_card(
 
 
 def featured_cards(session: Session, limit: int = 6) -> list[PriceCard]:
-    """A random sample of fresh active prices for the landing page (no query)."""
+    """Recognizable services for the landing page: the most widely-offered
+    (multi-clinic) services, one cheapest fresh card each. DB-only (Rule 1)."""
     now = datetime.now(UTC)
     age_days = func.floor(
         func.extract("epoch", now - ClinicServicePrice.parsed_at) / 86400.0
     ).cast(Float)
 
+    popular = (
+        select(
+            ClinicServicePrice.service_id,
+            func.count(func.distinct(ClinicServicePrice.clinic_id)).label("clinics"),
+        )
+        .where(ClinicServicePrice.is_active.is_(True), age_days <= STALE_DAYS)
+        .group_by(ClinicServicePrice.service_id)
+        .order_by(desc("clinics"))
+        .limit(limit)
+    )
+    ranked = {row.service_id: i for i, row in enumerate(session.execute(popular))}
+    if not ranked:
+        return []
+
+    # DISTINCT ON (service_id) ordered by price → cheapest fresh card per service.
     stmt = (
         select(
             ClinicServicePrice,
@@ -272,15 +288,22 @@ def featured_cards(session: Session, limit: int = 6) -> list[PriceCard]:
         .where(
             ClinicServicePrice.is_active.is_(True),
             age_days <= STALE_DAYS,
+            ClinicServicePrice.service_id.in_(ranked.keys()),
         )
-        .order_by(func.random())
-        .limit(limit)
+        .order_by(
+            ClinicServicePrice.service_id,
+            ClinicServicePrice.price_kzt.asc(),
+            ClinicServicePrice.id.desc(),
+        )
+        .distinct(ClinicServicePrice.service_id)
     )
 
-    return [
+    cards = [
         _build_card(price, clinic, branch, service, metadata, int(age))
         for price, clinic, branch, service, metadata, age in session.execute(stmt)
     ]
+    cards.sort(key=lambda c: ranked.get(c.service_id, len(ranked)))
+    return cards
 
 
 def map_pins(

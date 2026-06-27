@@ -1,8 +1,15 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 
-const SearchPage = lazy(() =>
-  import("@/pages/SearchPage").then((m) => ({ default: m.SearchPage })),
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ScrollToTop } from "@/components/ScrollToTop";
+import { TopProgress } from "@/components/TopProgress";
+
+const LandingPage = lazy(() =>
+  import("@/pages/LandingPage").then((m) => ({ default: m.LandingPage })),
+);
+const ResultsPage = lazy(() =>
+  import("@/pages/ResultsPage").then((m) => ({ default: m.ResultsPage })),
 );
 const ClinicDetailPage = lazy(() =>
   import("@/pages/ClinicDetailPage").then((m) => ({ default: m.ClinicDetailPage })),
@@ -16,22 +23,38 @@ const AnalyticsPage = lazy(() =>
 const DashboardPage = lazy(() =>
   import("@/pages/DashboardPage").then((m) => ({ default: m.DashboardPage })),
 );
+const NotFoundPage = lazy(() =>
+  import("@/pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage })),
+);
+
+function AnimatedRoutes() {
+  const location = useLocation();
+  return (
+    <div
+      key={location.pathname}
+      className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 motion-safe:ease-out"
+    >
+      <Routes location={location}>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/search" element={<ResultsPage />} />
+        <Route path="/clinics/:id" element={<ClinicDetailPage />} />
+        <Route path="/compare" element={<ComparePage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </div>
+  );
+}
 
 export default function App() {
   return (
-    <main className="min-h-screen bg-background">
-      <Suspense
-        fallback={<div className="p-8 text-sm text-muted-foreground">Загрузка…</div>}
-      >
-        <Routes>
-          <Route path="/" element={<SearchPage />} />
-          <Route path="/clinics/:id" element={<ClinicDetailPage />} />
-          <Route path="/compare" element={<ComparePage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+    <ErrorBoundary>
+      <ScrollToTop />
+      <TopProgress />
+      <Suspense fallback={<div className="min-h-screen bg-background" />}>
+        <AnimatedRoutes />
       </Suspense>
-    </main>
+    </ErrorBoundary>
   );
 }

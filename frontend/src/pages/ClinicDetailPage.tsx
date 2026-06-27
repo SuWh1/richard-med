@@ -1,16 +1,38 @@
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Globe, MapPin, Phone } from "lucide-react";
+import {
+  Check,
+  Clock,
+  ExternalLink,
+  Globe,
+  MapPin,
+  Navigation,
+  Phone,
+  Search,
+} from "lucide-react";
 
 import { fetchClinic, fetchClinicServices } from "@/lib/api";
-import { formatPrice } from "@/lib/format";
+import { capitalize, formatPrice, sourceLabel } from "@/lib/format";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
 import { FreshBadge } from "@/components/FreshBadge";
+import { StatusBadge } from "@/components/StatusBadge";
+import { AppShell } from "@/components/AppShell";
+import { ClinicCardSkeletonList } from "@/components/ClinicCardSkeleton";
+import { AnimatedList } from "@/components/AnimatedList";
+import { Pager } from "@/components/Pager";
+
+const PAGE_SIZE = 10;
+
+function routeUrl(query: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
 
 export function ClinicDetailPage() {
   const { id } = useParams();
   const clinicId = Number(id);
   const valid = Number.isInteger(clinicId) && clinicId > 0;
+  const [serviceQuery, setServiceQuery] = useState("");
 
   const clinicQuery = useQuery({
     queryKey: ["clinic", clinicId],
@@ -25,89 +47,173 @@ export function ClinicDetailPage() {
 
   const clinic = clinicQuery.data;
   const services = servicesQuery.data ?? [];
+  const branch = clinic?.branches[0];
+
+  const filtered = useMemo(
+    () =>
+      services.filter((s) =>
+        s.service_name.toLowerCase().includes(serviceQuery.toLowerCase()),
+      ),
+    [services, serviceQuery],
+  );
+
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [serviceQuery]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <Link to="/" className="text-sm font-medium text-primary hover:underline">
-        ← К поиску
-      </Link>
+    <AppShell
+      city={branch?.city ?? undefined}
+      breadcrumb={[
+        { label: "Поиск", href: "/" },
+        { label: clinic?.name ?? "Клиника" },
+      ]}
+    >
+      <div className="mx-auto max-w-4xl px-4 py-6 lg:px-6">
+        {clinicQuery.isLoading && <ClinicCardSkeletonList count={2} />}
+        {clinicQuery.isError && (
+          <p className="text-sm text-destructive">Клиника не найдена.</p>
+        )}
 
-      {clinicQuery.isLoading && (
-        <p className="mt-6 text-sm text-muted-foreground">Загрузка…</p>
-      )}
-      {clinicQuery.isError && (
-        <p className="mt-6 text-sm text-destructive">Клиника не найдена.</p>
-      )}
+        {clinic && (
+          <>
+            <div className="mb-6 rounded-2xl border border-border bg-white p-6 shadow-sm">
+              <div className="flex items-start gap-4">
+                <ClinicAvatar name={clinic.name} size="lg" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h1 className="mb-1 text-2xl font-semibold text-foreground">
+                        {clinic.name}
+                      </h1>
+                      {branch?.address && (
+                        <div className="mb-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          {[branch.city, branch.address].filter(Boolean).join(", ")}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                        {branch?.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3.5 w-3.5" /> {branch.phone}
+                          </span>
+                        )}
+                        {branch?.working_hours && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5" /> {branch.working_hours}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <StatusBadge variant="success">
+                        <Check className="h-3 w-3" /> Верифицировано
+                      </StatusBadge>
+                      <span className="text-xs text-muted-foreground">
+                        {sourceLabel(clinic.source_name)}
+                      </span>
+                    </div>
+                  </div>
 
-      {clinic && (
-        <>
-          <header className="mt-4 flex items-start gap-4">
-            <ClinicAvatar name={clinic.name} size="lg" />
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-foreground">{clinic.name}</h1>
-              {clinic.website_url && (
-                <a
-                  href={clinic.website_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                >
-                  <Globe className="h-3.5 w-3.5" /> {clinic.website_url}
-                </a>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    {branch && (
+                      <a
+                        href={routeUrl(
+                          [branch.city, branch.address, clinic.name]
+                            .filter(Boolean)
+                            .join(", "),
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary"
+                      >
+                        <Navigation className="h-4 w-4" /> Маршрут
+                      </a>
+                    )}
+                    {clinic.website_url && (
+                      <a
+                        href={clinic.website_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary"
+                      >
+                        <Globe className="h-4 w-4" /> Сайт клиники
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
+              <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+                <h2 className="font-semibold text-foreground">Все услуги клиники</h2>
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
+                  {services.length}
+                </span>
+                <div className="ml-auto flex items-center gap-2 rounded-lg border border-border bg-input-background px-3 py-1.5">
+                  <Search className="h-3.5 w-3.5 text-faintest" />
+                  <input
+                    value={serviceQuery}
+                    onChange={(e) => setServiceQuery(e.target.value)}
+                    placeholder="Поиск услуги…"
+                    className="w-28 bg-transparent text-sm text-foreground outline-none placeholder:text-faintest"
+                  />
+                </div>
+              </div>
+
+              {servicesQuery.isSuccess && filtered.length === 0 && (
+                <p className="px-5 py-6 text-sm text-muted-foreground">
+                  {services.length === 0
+                    ? "Актуальных цен нет."
+                    : "Ничего не найдено по этому запросу."}
+                </p>
+              )}
+
+              <AnimatedList className="divide-y divide-secondary">
+                {pageItems.map((s) => (
+                  <div
+                    key={`${s.service_id}-${s.branch_id}`}
+                    className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-secondary/50"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 truncate text-sm text-foreground">
+                        {s.service_name}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">
+                          {capitalize(s.category)}
+                        </span>
+                        <FreshBadge freshness={s.freshness} ageDays={s.age_days} />
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-base font-bold text-foreground">
+                        {formatPrice(s.price_kzt)}
+                      </span>
+                      <a
+                        href={s.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 rounded-lg border border-primary/30 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-accent/40"
+                      >
+                        Источник <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </AnimatedList>
+
+              {totalPages > 1 && (
+                <div className="border-t border-border px-3 py-3">
+                  <Pager page={page} totalPages={totalPages} onPage={setPage} />
+                </div>
               )}
             </div>
-          </header>
-
-          <section className="mt-6 grid gap-3 sm:grid-cols-2">
-            {clinic.branches.map((b) => (
-              <div key={b.id} className="rounded-xl border border-border bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                  <MapPin className="h-3.5 w-3.5 text-primary" /> {b.city}
-                </div>
-                {b.address && (
-                  <div className="mt-0.5 text-sm text-muted-foreground">{b.address}</div>
-                )}
-                {b.phone && (
-                  <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Phone className="h-3 w-3" /> {b.phone}
-                  </div>
-                )}
-                {b.working_hours && (
-                  <div className="mt-0.5 text-xs text-muted-foreground">{b.working_hours}</div>
-                )}
-              </div>
-            ))}
-          </section>
-
-          <section className="mt-8">
-            <h2 className="mb-3 font-semibold text-foreground">Все услуги клиники</h2>
-            {servicesQuery.isSuccess && services.length === 0 && (
-              <p className="text-sm text-muted-foreground">Актуальных цен нет.</p>
-            )}
-            <div className="divide-y divide-secondary rounded-xl border border-border bg-white">
-              {services.map((s) => (
-                <div
-                  key={`${s.service_id}-${s.branch_id}`}
-                  className="flex items-center justify-between gap-3 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-foreground">
-                      {s.service_name}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{s.category}</div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <FreshBadge freshness={s.freshness} ageDays={s.age_days} />
-                    <span className="font-semibold text-foreground">
-                      {formatPrice(s.price_kzt)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </AppShell>
   );
 }

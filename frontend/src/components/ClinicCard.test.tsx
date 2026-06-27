@@ -36,6 +36,7 @@ function renderCard(overrides: Partial<Parameters<typeof ClinicCard>[0]> = {}) {
       card={card}
       isCheapest={false}
       isHighlighted={false}
+      median={null}
       onHover={() => {}}
       onPassport={() => {}}
       {...overrides}
@@ -58,11 +59,22 @@ describe("ClinicCard", () => {
         card={card}
         isCheapest={false}
         isHighlighted={false}
+        median={null}
         onHover={() => {}}
         onPassport={() => {}}
       />,
     );
     expect(screen.queryByText("Лучшая цена")).not.toBeInTheDocument();
+  });
+
+  it("should show a below-median badge when cheaper than the median", () => {
+    renderCard({ median: 2700 });
+    expect(screen.getByText(/% ниже среднего/)).toBeInTheDocument();
+  });
+
+  it("should not show a below-median badge when at or above the median", () => {
+    renderCard({ median: 1880 });
+    expect(screen.queryByText(/ниже среднего/)).not.toBeInTheDocument();
   });
 
   it("should call onPassport when the source button is clicked", async () => {

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Zap } from "lucide-react";
 
@@ -28,6 +27,8 @@ import { Kpis } from "@/components/Kpis";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { SourceHealthCard } from "@/components/SourceHealthCard";
 import { FreshnessBadge } from "@/components/FreshnessBadge";
+import { AnimatedList } from "@/components/AnimatedList";
+import { AppShell } from "@/components/AppShell";
 
 const CITIES = ["Астана", "Алматы"];
 
@@ -123,7 +124,11 @@ export function DashboardPage() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <AppShell
+      breadcrumb={[{ label: "Кабинет" }, { label: "Source Health" }]}
+      city={city}
+    >
+      <div className="mx-auto max-w-6xl px-4 py-8">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Source Health Dashboard</h1>
@@ -147,13 +152,10 @@ export function DashboardPage() {
           <button
             onClick={() => runMutation.mutate(null)}
             disabled={anyBusy}
-            className="flex min-h-[36px] items-center gap-2 rounded-xl bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition hover:bg-[#0b8a7a] disabled:opacity-50"
+            className="flex min-h-[36px] items-center gap-2 rounded-xl bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover disabled:opacity-50"
           >
             <Zap className="h-4 w-4" /> {anyBusy ? "Идёт парсинг…" : "Запустить все"}
           </button>
-          <Link to="/" className="text-sm font-medium text-primary hover:underline">
-            ← К поиску
-          </Link>
         </div>
       </header>
 
@@ -186,7 +188,8 @@ export function DashboardPage() {
         <RunHistory runs={runs} selectedRun={selectedRun} onSelect={setSelectedRun} />
         <RunDetailPanel runId={selectedRun} />
       </div>
-    </div>
+      </div>
+    </AppShell>
   );
 }
 
@@ -204,11 +207,11 @@ function RunHistory({
       <h2 className="border-b border-slate-100 px-4 py-3 font-semibold text-slate-900">
         История запусков
       </h2>
-      <div className="divide-y divide-slate-100">
-        {runs.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-slate-500">Запусков пока нет.</p>
-        ) : null}
-        {runs.map((run) => (
+      {runs.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-slate-500">Запусков пока нет.</p>
+      ) : (
+        <AnimatedList className="divide-y divide-slate-100">
+          {runs.map((run) => (
           <button
             key={run.id}
             onClick={() => onSelect(run.id)}
@@ -230,8 +233,9 @@ function RunHistory({
               <RunStatusBadge status={run.status} />
             </div>
           </button>
-        ))}
-      </div>
+          ))}
+        </AnimatedList>
+      )}
     </div>
   );
 }

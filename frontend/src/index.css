@@ -6,30 +6,44 @@
 
 :root {
   --font-size: 16px;
-  --background: #f8fafc;
+  --background: #f8f8f7;
   --foreground: #0f172a;
   --card: #ffffff;
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #0e9f8e;
+  --primary: #d97757;
   --primary-foreground: #ffffff;
+  --primary-hover: #bf5f3f;
   --secondary: #f1f5f9;
   --secondary-foreground: #475569;
+
+  /* Semantic – freshness / status. Soft = tinted bg, solid = text/icon. */
+  --success: #16a34a;
+  --success-soft: #dcfce7;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+  --warning-strong: #92400e;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --hairline: #f1f5f9;
+  --faint: #94a3b8;
+  --faintest: #cbd5e1;
+  --inset: #f8f8f7;
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
-  --accent: #e0f5f3;
-  --accent-foreground: #0e9f8e;
+  --accent: #f7e9e1;
+  --accent-foreground: #bf5f3f;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
   --border: #e2e8f0;
   --input: transparent;
-  --input-background: #f8fafc;
+  --input-background: #f8f8f7;
   --switch-background: #cbd5e1;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #0e9f8e;
-  --chart-1: #0e9f8e;
+  --ring: #d97757;
+  --chart-1: #d97757;
   --chart-2: #6366f1;
   --chart-3: #f59e0b;
   --chart-4: #ec4899;
@@ -37,12 +51,12 @@
   --radius: 0.75rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #0f172a;
-  --sidebar-primary: #0e9f8e;
+  --sidebar-primary: #d97757;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e0f5f3;
-  --sidebar-accent-foreground: #0e9f8e;
+  --sidebar-accent: #f7e9e1;
+  --sidebar-accent-foreground: #bf5f3f;
   --sidebar-border: #e2e8f0;
-  --sidebar-ring: #0e9f8e;
+  --sidebar-ring: #d97757;
 }
 
 @theme inline {
@@ -54,8 +68,20 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-strong: var(--warning-strong);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-hairline: var(--hairline);
+  --color-faint: var(--faint);
+  --color-faintest: var(--faintest);
+  --color-inset: var(--inset);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
@@ -76,6 +102,14 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
 }
 
 @layer base {
@@ -87,4 +121,97 @@
     @apply bg-background text-foreground;
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label[for],
+  summary,
+  select {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 0.875rem;
+  box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.28);
+  padding: 0.5rem;
+}
+
+.leaflet-popup-content {
+  margin: 0.5rem;
+  width: auto !important;
+}
+
+.leaflet-container {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Animated glowing card border (rotating black arc). */
+@property --glow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes glow-spin {
+  to {
+    --glow-angle: 360deg;
+  }
+}
+
+.glow-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--glow-angle),
+    transparent 0deg,
+    rgba(15, 23, 42, 0.7) 35deg,
+    rgba(15, 23, 42, 0.15) 80deg,
+    transparent 130deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: glow-spin 5s linear infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-ring {
+    animation: none;
+  }
+}
+
+.dark {
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }
