@@ -127,3 +127,15 @@ def test_should_return_map_pins_endpoint_for_oak():
 def test_should_reject_map_request_without_service_id():
     resp = client.get("/api/v1/search/map")
     assert resp.status_code == 422
+
+
+def test_should_reject_bbox_with_non_finite_values():
+    resp = client.get(
+        "/api/v1/search/map", params={"service_id": 1, "bbox": "0,0,nan,90"}
+    )
+    assert resp.status_code == 422
+
+
+def test_should_reject_malformed_bbox():
+    resp = client.get("/api/v1/search/map", params={"service_id": 1, "bbox": "1,2,3"})
+    assert resp.status_code == 422

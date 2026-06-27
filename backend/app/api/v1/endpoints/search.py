@@ -1,3 +1,5 @@
+import math
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -12,11 +14,16 @@ def _parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
     if bbox is None:
         return None
     try:
-        min_lng, min_lat, max_lng, max_lat = (float(p) for p in bbox.split(","))
+        corners = tuple(float(p) for p in bbox.split(","))
     except ValueError as exc:
         raise HTTPException(
             status_code=422, detail="bbox must be 'min_lng,min_lat,max_lng,max_lat'"
         ) from exc
+    if len(corners) != 4 or not all(math.isfinite(v) for v in corners):
+        raise HTTPException(
+            status_code=422, detail="bbox must be four finite numbers"
+        )
+    min_lng, min_lat, max_lng, max_lat = corners
     return (min_lng, min_lat, max_lng, max_lat)
 
 

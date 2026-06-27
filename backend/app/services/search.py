@@ -311,30 +311,28 @@ def map_pins(
         return []
 
     cheapest_price = min(price.price_kzt for price, _clinic, _branch, _age in rows)
-    pins: list[MapPin] = []
-    cheapest_flagged = False
-    for price, clinic, branch, age in rows:
-        is_cheapest = not cheapest_flagged and price.price_kzt == cheapest_price
-        cheapest_flagged = cheapest_flagged or is_cheapest
-        pins.append(
-            MapPin(
-                price_id=price.id,
-                clinic_id=clinic.id,
-                clinic_name=clinic.name,
-                branch_id=branch.id,
-                city=branch.city,
-                address=branch.address,
-                lat=branch.lat,
-                lng=branch.lng,
-                price_kzt=price.price_kzt,
-                parsed_at=price.parsed_at,
-                age_days=int(age),
-                freshness=_freshness(int(age)),
-                source_url=price.source_url,
-                is_cheapest=is_cheapest,
-            )
+    cheapest_id = next(
+        price.id for price, _clinic, _branch, _age in rows if price.price_kzt == cheapest_price
+    )
+    return [
+        MapPin(
+            price_id=price.id,
+            clinic_id=clinic.id,
+            clinic_name=clinic.name,
+            branch_id=branch.id,
+            city=branch.city,
+            address=branch.address,
+            lat=branch.lat,
+            lng=branch.lng,
+            price_kzt=price.price_kzt,
+            parsed_at=price.parsed_at,
+            age_days=int(age),
+            freshness=_freshness(int(age)),
+            source_url=price.source_url,
+            is_cheapest=price.id == cheapest_id,
         )
-    return pins
+        for price, clinic, branch, age in rows
+    ]
 
 
 def _sort_cards(cards: list[PriceCard], sort: str) -> list[PriceCard]:
