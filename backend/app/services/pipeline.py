@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -22,6 +23,20 @@ from app.services.normalization import FUZZY_AUTO, ServiceMatcher
 logger = logging.getLogger(__name__)
 # Only auto-save confident matches; 0.75–0.88 "suggest" matches go to the queue (§9).
 MATCH_FLOOR = FUZZY_AUTO
+
+_DURATION_RE = re.compile(r"\d+")
+
+
+def _parse_duration(raw: str | None) -> tuple[int | None, int | None]:
+    """Turn '1' → (1, 1) and '1-3' → (1, 3); unparseable → (None, None)."""
+    if not raw:
+        return None, None
+    nums = _DURATION_RE.findall(raw)
+    if not nums:
+        return None, None
+    if len(nums) == 1:
+        return int(nums[0]), int(nums[0])
+    return int(nums[0]), int(nums[1])
 
 
 @dataclass(frozen=True)
@@ -109,6 +124,8 @@ def _upsert_price(
     content_hash: str,
     confidence: float,
     method: str,
+    duration_min: int | None,
+    duration_max: int | None,
     now: datetime,
 ) -> tuple[bool, int | None]:
     """Insert or version a price. Returns (price_id_seen, existing_id_deactivated_or_none)."""
@@ -126,6 +143,8 @@ def _upsert_price(
         existing.source_url = item.source_url
         existing.match_confidence = confidence
         existing.match_method = method
+        existing.duration_min = duration_min
+        existing.duration_max = duration_max
         return existing.id, existing.id
 
     if existing is not None:
@@ -150,6 +169,8 @@ def _upsert_price(
         service_id=service_id,
         raw_price_item_id=raw_item_id,
         price_kzt=price_kzt,
+        duration_min=duration_min,
+        duration_max=duration_max,
         service_name_raw=item.service_name_raw,
         content_hash=content_hash,
         match_confidence=confidence,
@@ -253,6 +274,7 @@ def run_source(
                 branch_id = branch.id if branch else None
                 key = (clinic.id, result.service_id, branch_id)
 
+                duration_min, duration_max = _parse_duration(item.duration_raw)
                 duplicate = run_prices.get(key)
                 if duplicate is not None:
                     if price < duplicate.price_kzt:
@@ -262,6 +284,8 @@ def run_source(
                         duplicate.match_confidence = result.confidence
                         duplicate.match_method = result.method
                         duplicate.raw_price_item_id = raw_row.id
+                        duplicate.duration_min = duration_min
+                        duplicate.duration_max = duration_max
                     continue
 
                 price_id, _ = _upsert_price(
@@ -275,6 +299,8 @@ def run_source(
                     content_hash=raw_doc.content_hash,
                     confidence=result.confidence,
                     method=result.method,
+                    duration_min=duration_min,
+                    duration_max=duration_max,
                     now=now,
                 )
                 seen_price_ids.add(price_id)

@@ -1,0 +1,59 @@
+{
+  "data": [
+    {
+      "id": 55,
+      "translation": { "title": "Гематология" },
+      "analysis": [
+        {
+          "id": 1151,
+          "code": "1151",
+          "slug": "klinicheskiy-analiz-krovi-oak",
+          "translation": { "title": "Общий анализ крови (ОАК без СОЭ)" },
+          "price": { "price": 3980, "min_duration": 1, "max_duration": 1 }
+        },
+        {
+          "id": 1152,
+          "code": "1152",
+          "slug": "oak-soe",
+          "translation": { "title": "Общий анализ крови с СОЭ" },
+          "price": { "price": 4200, "min_duration": 1, "max_duration": 2 }
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "translation": { "title": "Биохимия крови" },
+      "analysis": [
+        {
+          "id": 2001,
+          "code": "2001",
+          "slug": "glyukoza",
+          "translation": { "title": "Глюкоза" },
+          "price": { "price": 1100, "min_duration": 1, "max_duration": 1 }
+        },
+        {
+          "id": 2002,
+          "code": "2002",
+          "slug": "ferritin",
+          "translation": { "title": "Ферритин" },
+          "price": { "price": 4500, "min_duration": 1, "max_duration": 3 }
+        },
+        {
+          "id": 2003,
+          "code": "2003",
+          "slug": "snyataya-poziciya",
+          "translation": { "title": "Снятая позиция без цены" },
+          "price": { "price": null, "min_duration": null, "max_duration": null }
+        },
+        {
+          "id": 2004,
+          "code": "2004",
+          "slug": "ferritin-dinamika",
+          "translation": { "title": "Ферритин (динамика)" },
+          "price": { "price": 480, "min_duration": 1, "max_duration": 1 }
+        }
+      ]
+    }
+  ],
+  "_meta": { "totalCount": 2, "pageCount": 1, "currentPage": 1, "pageSize": 100 }
+}

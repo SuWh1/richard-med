@@ -1,7 +1,7 @@
+import json
 import re
 from pathlib import Path
-
-from bs4 import BeautifulSoup
+from urllib.parse import urlencode
 
 from app.scrapers.base import (
     BaseSourceAdapter,
@@ -12,16 +12,28 @@ from app.scrapers.base import (
 from app.scrapers.http import PoliteClient, content_hash
 
 BASE_URL = "https://kdlolymp.kz"
+API_URL = f"{BASE_URL}/api/analysis-data"
 CLINIC_NAME = "KDL Olymp"
-_FIXTURE = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "kdl_pricelist_astana.html"
+_FIXTURE = (
+    Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "kdl_analysis_data_astana.json"
+)
 
-# KDL serves one price list per city under /pricelist/<slug>.
+# KDL's internal JSON price API. `per-page` counts categories (49 total), so one page
+# with per-page=100 returns the whole catalog. Public, unauthenticated, robots-clean.
 _CITY_SLUGS = {"Астана": "astana", "Алматы": "almaty"}
 _DIGITS = re.compile(r"\d+")
 
 
+def _duration_str(min_d: int | None, max_d: int | None) -> str | None:
+    if min_d is None and max_d is None:
+        return None
+    if min_d is not None and max_d is not None and min_d != max_d:
+        return f"{min_d}-{max_d}"
+    return str(max_d if max_d is not None else min_d)
+
+
 class KdlOlympAdapter(BaseSourceAdapter):
-    """KDL Olymp lab price list — server-rendered HTML, one `a.analysis` row per service."""
+    """KDL Olymp lab catalog via its internal `analysis-data` JSON API."""
 
     def __init__(self, client: PoliteClient | None = None):
         self._client = client
@@ -29,58 +41,66 @@ class KdlOlympAdapter(BaseSourceAdapter):
     def identity(self) -> str:
         return "kdl_olymp"
 
+    def _url(self, slug: str) -> str:
+        params = {"per-page": 100, "lang": "ru-RU", "city_slug": slug, "page": 1}
+        return f"{API_URL}?{urlencode(params)}"
+
     def fetch(self, city: str) -> list[RawDocument]:
         slug = _CITY_SLUGS.get(city)
         if slug is None:
             return []
-        url = f"{BASE_URL}/pricelist/{slug}"
+        url = self._url(slug)
         client = self._client or PoliteClient()
         try:
             response = client.get(url)
         finally:
             if self._client is None:
                 client.close()
-        html = response.text
+        text = response.text
         return [
             RawDocument(
                 source_name=self.identity(),
                 source_url=url,
                 city=city,
-                raw_html=html,
-                content_hash=content_hash(html),
+                raw_html=text,
+                content_hash=content_hash(text),
                 status_code=response.status_code,
                 fetched_at="",
             )
         ]
 
     def parse(self, raw_doc: RawDocument) -> list[RawPriceItem]:
-        soup = BeautifulSoup(raw_doc.raw_html, "html.parser")
+        payload = json.loads(raw_doc.raw_html)
         items: list[RawPriceItem] = []
-        for row in soup.select("a.analysis"):
-            title = row.select_one(".title")
-            price = row.select_one(".price")
-            if title is None or price is None:
-                continue
-            name = title.get_text(strip=True)
-            if not name:
-                continue
-            category = row.select_one(".category")
-            duration = row.select_one(".duration")
-            href = row.get("href") or ""
-            item_url = f"{BASE_URL}{href}" if href.startswith("/") else (href or raw_doc.source_url)
-            items.append(
-                RawPriceItem(
-                    source_url=item_url,
-                    clinic_raw=CLINIC_NAME,
-                    service_name_raw=name,
-                    price_raw=price.get_text(strip=True),
-                    duration_raw=duration.get_text(strip=True) if duration else None,
-                    metadata={
-                        "category": category.get_text(strip=True) if category else None,
-                        "city": raw_doc.city,
-                    },
+        for category in payload.get("data", []):
+            category_title = (category.get("translation") or {}).get("title")
+            for analysis in category.get("analysis", []):
+                title = (analysis.get("translation") or {}).get("title")
+                price_block = analysis.get("price") or {}
+                price = price_block.get("price")
+                if not title or not price:
+                    continue
+                # "(динамика)" are cheap re-test variants that falsely match the base service.
+                if "динамика" in title.lower():
+                    continue
+                slug = analysis.get("slug") or ""
+                item_url = f"{BASE_URL}/analysis/{slug}" if slug else raw_doc.source_url
+                min_d = price_block.get("min_duration")
+                max_d = price_block.get("max_duration")
+                items.append(
+                    RawPriceItem(
+                        source_url=item_url,
+                        clinic_raw=CLINIC_NAME,
+                        service_name_raw=title,
+                        price_raw=str(price),
+                        duration_raw=_duration_str(min_d, max_d),
+                        metadata={
+                            "category": category_title,
+                            "code": analysis.get("code"),
+                            "city": raw_doc.city,
+                        },
+                    )
                 )
-            )
         return items
 
     def clean(self, raw_item: RawPriceItem) -> RawPriceItem:
@@ -95,13 +115,13 @@ class KdlOlympAdapter(BaseSourceAdapter):
         )
 
     def test_snapshot(self) -> SnapshotResult:
-        html = _FIXTURE.read_text(encoding="utf-8")
+        text = _FIXTURE.read_text(encoding="utf-8")
         doc = RawDocument(
             source_name=self.identity(),
-            source_url=f"{BASE_URL}/pricelist/astana",
+            source_url=self._url("astana"),
             city="Астана",
-            raw_html=html,
-            content_hash=content_hash(html),
+            raw_html=text,
+            content_hash=content_hash(text),
             status_code=200,
             fetched_at="",
         )
