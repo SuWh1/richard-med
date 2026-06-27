@@ -6,7 +6,7 @@ import { POPULAR_SERVICES } from "@/lib/constants";
 
 const TRUST = [
   { Icon: Shield, title: "Источник каждой цены", desc: "Ссылка на прайс-лист клиники" },
-  { Icon: Clock, title: "Свежесть до 30 дней", desc: "Автоматическое обновление данных" },
+  { Icon: Clock, title: "Ежедневное обновление", desc: "Цены парсятся каждый день" },
   { Icon: MapPin, title: "Сравнение и карта", desc: "Маршрут от вашей точки" },
 ];
 
@@ -21,7 +21,7 @@ export function HomeHero({ city, searchBar, onPickPopular }: HomeHeroProps) {
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-16">
       <div className="mb-7 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-primary">
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-        Казахстан · {city}
+        {city}
       </div>
 
       <h1 className="mb-4 max-w-xl text-center text-[40px] font-semibold leading-[1.2] text-foreground">

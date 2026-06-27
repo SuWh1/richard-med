@@ -21,9 +21,11 @@ export function Header({ city, onCityChange }: HeaderProps) {
     <header className="sticky top-0 z-50 flex h-14 items-center border-b border-border bg-white">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-5">
         <Link to="/" className="flex shrink-0 items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
-          </span>
+          <img
+            src="/richard-without-background.png"
+            alt="Richard Med"
+            className="h-9 w-auto object-contain"
+          />
           <span className="text-[15px] font-semibold tracking-tight text-foreground">
             Richard Med
           </span>
