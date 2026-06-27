@@ -49,3 +49,6 @@ Thumbs.db
 # ─── Docker / data ───────────────────────────────────────
 postgres-data/
 *.dump
+
+# ─── Design reference (Figma Make export — port from, don't ship) ──
+frontFIgma/

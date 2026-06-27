@@ -8,6 +8,8 @@
 > - [`docs/CASE.md`](./docs/CASE.md) — the hackathon brief (Case 1, MedPrice).
 > - `docs/MedServicePrice_Winning_Blueprint.xlsx` — the 21-sheet execution playbook.
 > - `docs/case/` — the original `.docx` brief + `Справочник услуг.xlsx`.
+> - [`docs/frontend-port-plan.md`](./docs/frontend-port-plan.md) — phased plan to port the
+>   Figma shadcn UI (`frontFIgma/`, gitignored reference) into the wired `frontend/`.
 
 ---
 
