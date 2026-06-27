@@ -1,6 +1,7 @@
 import { SlidersHorizontal } from "lucide-react";
 
 import type { SearchState } from "@/hooks/useSearchState";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -11,6 +12,15 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { FilterControls } from "./FilterControls";
 
 interface FiltersSheetProps {
@@ -28,35 +38,62 @@ export function FiltersSheet({
   onReset,
   activeCount,
 }: FiltersSheetProps) {
+  const isMobile = useIsMobile();
+
+  const trigger = (
+    <Button variant="outline" size="sm" className="gap-1.5">
+      <SlidersHorizontal className="h-4 w-4" />
+      Фильтры
+      {activeCount > 0 && (
+        <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+          {activeCount}
+        </span>
+      )}
+    </Button>
+  );
+
+  const controls = <FilterControls state={state} cities={cities} onPatch={onPatch} />;
+
+  // Mobile → bottom sheet; desktop → centered modal.
+  if (isMobile) {
+    return (
+      <Sheet>
+        <SheetTrigger asChild>{trigger}</SheetTrigger>
+        <SheetContent side="bottom" className="mx-auto max-w-lg rounded-t-2xl">
+          <SheetHeader>
+            <SheetTitle>Фильтры</SheetTitle>
+          </SheetHeader>
+          <div className="px-4">{controls}</div>
+          <SheetFooter className="flex-row gap-3">
+            <Button variant="outline" className="flex-1" onClick={onReset}>
+              Сбросить
+            </Button>
+            <SheetClose asChild>
+              <Button className="flex-1">Готово</Button>
+            </SheetClose>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
   return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <SlidersHorizontal className="h-4 w-4" />
-          Фильтры
-          {activeCount > 0 && (
-            <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-              {activeCount}
-            </span>
-          )}
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="mx-auto max-w-lg rounded-t-2xl">
-        <SheetHeader>
-          <SheetTitle>Фильтры</SheetTitle>
-        </SheetHeader>
-        <div className="px-4">
-          <FilterControls state={state} cities={cities} onPatch={onPatch} />
-        </div>
-        <SheetFooter className="flex-row gap-3">
+    <Dialog>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Фильтры</DialogTitle>
+        </DialogHeader>
+        <div className="py-1">{controls}</div>
+        <DialogFooter className="flex-row gap-3 sm:justify-start">
           <Button variant="outline" className="flex-1" onClick={onReset}>
             Сбросить
           </Button>
-          <SheetClose asChild>
+          <DialogClose asChild>
             <Button className="flex-1">Готово</Button>
-          </SheetClose>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

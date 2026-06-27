@@ -4,6 +4,7 @@ import { Zap } from "lucide-react";
 
 import type { ParseRunSummary, ParsedPriceSample } from "@/types";
 import {
+  fetchCities,
   fetchParseRuns,
   fetchRunDetail,
   fetchSourceHealth,
@@ -32,12 +33,17 @@ import { AppShell } from "@/components/AppShell";
 import { ServicesTable } from "@/components/ServicesTable";
 import { UnmatchedQueue } from "@/components/UnmatchedQueue";
 
-const CITIES = ["Астана", "Алматы"];
+const FALLBACK_CITIES = ["Астана", "Алматы"];
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
-  const [city, setCity] = useState(CITIES[0]);
+  const [city, setCity] = useState(FALLBACK_CITIES[0]);
   const [selectedRun, setSelectedRun] = useState<number | null>(null);
+
+  const citiesQuery = useQuery({ queryKey: ["cities"], queryFn: fetchCities });
+  const cityNames = citiesQuery.data?.length
+    ? citiesQuery.data.map((c) => c.name)
+    : FALLBACK_CITIES;
   // Sources the user just triggered, before a "running" row appears in the data.
   const [triggeredAt, setTriggeredAt] = useState<Record<string, number>>({});
   const [, forceTick] = useState(0);
@@ -144,7 +150,7 @@ export function DashboardPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {CITIES.map((c) => (
+              {cityNames.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}
                 </SelectItem>

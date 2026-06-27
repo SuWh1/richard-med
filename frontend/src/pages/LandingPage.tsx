@@ -83,7 +83,7 @@ export function LandingPage() {
     <Select value={city} onValueChange={setCity}>
       <SelectTrigger
         size="sm"
-        className="w-auto max-w-[200px] gap-1.5 border-transparent bg-transparent text-muted-foreground hover:bg-secondary sm:max-w-none [&>span]:truncate"
+        className="h-8 w-auto max-w-[160px] gap-1 rounded-full border-transparent bg-secondary/60 px-2.5 text-muted-foreground hover:bg-secondary [&>span]:truncate"
       >
         <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
         <SelectValue />

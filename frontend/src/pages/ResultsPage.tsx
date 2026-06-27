@@ -157,7 +157,7 @@ export function ResultsPage() {
     <AppShell
       city={state.city}
       breadcrumb={[
-        { label: "Поиск", href: "/" },
+        { label: "Поиск" },
         { label: resolved?.name_ru ?? "Результаты" },
       ]}
     >

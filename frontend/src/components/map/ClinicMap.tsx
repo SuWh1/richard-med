@@ -1,10 +1,22 @@
 import { useEffect, useMemo, useRef } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import type { MapPin } from "@/types";
 import { MapPopupCard } from "./MapPopupCard";
+
+function clusterIcon(cluster: { getChildCount: () => number }): L.DivIcon {
+  const count = cluster.getChildCount();
+  const size = count < 10 ? 36 : count < 50 ? 44 : 52;
+  const html =
+    `<div style="display:flex;align-items:center;justify-content:center;width:${size}px;` +
+    `height:${size}px;border-radius:9999px;background:#d97757;color:#fff;` +
+    `font:700 13px/1 Inter,system-ui,sans-serif;border:3px solid #fff;` +
+    `box-shadow:0 2px 8px rgba(15,23,42,.35)">${count}</div>`;
+  return L.divIcon({ html, className: "", iconSize: [size, size] });
+}
 
 interface ClinicMapProps {
   pins: MapPin[];
@@ -105,26 +117,33 @@ export function ClinicMap({
       />
       <FitBounds points={points} center={center} />
       <PanToSelected pins={pins} selectedClinicId={selectedClinicId} markers={markers} />
-      {pins.map((pin) => (
-        <Marker
-          key={pin.branch_id}
-          position={[pin.lat, pin.lng]}
-          ref={(m) => {
-            if (m) markers.current.set(pin.branch_id, m);
-            else markers.current.delete(pin.branch_id);
-          }}
-          icon={pinIcon({
-            cheapest: pin.is_cheapest,
-            selected: pin.clinic_id === selectedClinicId,
-            stale: pin.freshness === "stale",
-          })}
-          eventHandlers={{ click: () => onSelectClinic(pin.clinic_id) }}
-        >
-          <Popup>
-            <MapPopupCard pin={pin} median={median} />
-          </Popup>
-        </Marker>
-      ))}
+      <MarkerClusterGroup
+        chunkedLoading
+        maxClusterRadius={45}
+        showCoverageOnHover={false}
+        iconCreateFunction={clusterIcon}
+      >
+        {pins.map((pin) => (
+          <Marker
+            key={pin.branch_id}
+            position={[pin.lat, pin.lng]}
+            ref={(m) => {
+              if (m) markers.current.set(pin.branch_id, m);
+              else markers.current.delete(pin.branch_id);
+            }}
+            icon={pinIcon({
+              cheapest: pin.is_cheapest,
+              selected: pin.clinic_id === selectedClinicId,
+              stale: pin.freshness === "stale",
+            })}
+            eventHandlers={{ click: () => onSelectClinic(pin.clinic_id) }}
+          >
+            <Popup>
+              <MapPopupCard pin={pin} median={median} />
+            </Popup>
+          </Marker>
+        ))}
+      </MarkerClusterGroup>
     </MapContainer>
   );
 }
