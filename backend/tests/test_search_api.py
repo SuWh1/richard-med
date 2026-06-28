@@ -437,3 +437,81 @@ def test_should_fall_back_to_priced_relative_when_exact_match_has_no_prices(db_s
     assert resolved is not None
     assert resolved.id == priced.id
     assert resolved.has_prices
+
+
+def _price_in(session, service_id, *, city, price=5000):
+    clinic = Clinic(name=f"Зззгород {city}", source_name="zzz-city")
+    session.add(clinic)
+    session.flush()
+    session.add(
+        ClinicServicePrice(
+            clinic_id=clinic.id,
+            service_id=service_id,
+            city=city,
+            price_kzt=price,
+            source_url=f"https://example.test/{city}",
+            parsed_at=datetime.now(UTC),
+            is_active=True,
+            match_confidence=1.0,
+        )
+    )
+    session.flush()
+
+
+def test_should_make_autocomplete_has_prices_city_aware(db_session):
+    svc = Service(
+        service_key="t-zzzгород",
+        name_ru="Зззгородуслуга уникальная",
+        category=ServiceCategory.doctor_visit,
+    )
+    db_session.add(svc)
+    db_session.flush()
+    _price_in(db_session, svc.id, city="Караганда")
+
+    in_astana = search.autocomplete(db_session, "Зззгородуслуга", city="Астана")
+    in_karaganda = search.autocomplete(db_session, "Зззгородуслуга", city="Караганда")
+
+    assert any(s.id == svc.id and not s.has_prices for s in in_astana)
+    assert any(s.id == svc.id and s.has_prices for s in in_karaganda)
+
+
+def test_should_list_other_cities_with_prices_excluding_selected(db_session):
+    svc = Service(
+        service_key="t-zzzмультигород",
+        name_ru="Зззмультигород уникальная",
+        category=ServiceCategory.doctor_visit,
+    )
+    db_session.add(svc)
+    db_session.flush()
+    _price_in(db_session, svc.id, city="Караганда")
+    _price_in(db_session, svc.id, city="Темиртау")
+    _price_in(db_session, svc.id, city="Темиртау")
+
+    rows = search.cities_with_prices(db_session, svc.id, exclude_city="Астана")
+
+    by_city = {city: count for city, count in rows}
+    assert by_city == {"Темиртау": 2, "Караганда": 1}
+    assert rows[0][0] == "Темиртау"  # most prices first
+
+
+def test_should_return_other_cities_when_empty_in_selected_city(db_session):
+    svc = Service(
+        service_key="t-zzzпустойгород",
+        name_ru="Зззпустойгород уникальная услуга",
+        category=ServiceCategory.doctor_visit,
+    )
+    db_session.add(svc)
+    db_session.flush()
+    _price_in(db_session, svc.id, city="Караганда")
+
+    resp = client.get(
+        "/api/v1/search",
+        params={"q": "Зззпустойгород уникальная услуга", "city": "Астана"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 0
+    assert body["resolved_service"] is not None
+    assert body["resolved_service"]["id"] == svc.id
+    cities = {c["name"]: c["count"] for c in body["other_cities"]}
+    assert cities.get("Караганда") == 1

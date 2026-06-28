@@ -9,6 +9,7 @@ from app.models import (
     Clinic,
     ClinicBranch,
     ClinicServicePrice,
+    Doctor,
     RawPriceItem,
     Service,
     ServiceAlias,
@@ -120,13 +121,19 @@ def available_cities(session: Session) -> list[City]:
 
 
 def autocomplete(
-    session: Session, q: str, limit: int = 10, category: str | None = None
+    session: Session,
+    q: str,
+    limit: int = 10,
+    category: str | None = None,
+    city: str | None = None,
 ) -> list[Suggestion]:
     """Lexical autocomplete over service names + aliases. Never embeds.
 
     Prefix matches rank first, then services that have prices, then trigram score.
     Duplicate `name_ru` rows (same service under different specialties) collapse to a
     single suggestion — disambiguated by `specialty` — so the list never repeats a name.
+    When `city` is given, `has_prices` reflects that city only, so a suggestion never
+    claims availability the city-scoped price view can't honour.
     """
     q = (q or "").strip()
     if len(q) < 2:
@@ -144,12 +151,15 @@ def autocomplete(
         ),
         False,
     )
+    price_filters = [
+        ClinicServicePrice.service_id == Service.id,
+        ClinicServicePrice.is_active.is_(True),
+    ]
+    if city:
+        price_filters.append(ClinicServicePrice.city == city)
     price_count = (
         select(func.count(ClinicServicePrice.id))
-        .where(
-            ClinicServicePrice.service_id == Service.id,
-            ClinicServicePrice.is_active.is_(True),
-        )
+        .where(*price_filters)
         .correlate(Service)
         .scalar_subquery()
     )
@@ -225,19 +235,22 @@ _USE_DEFAULT_EMBEDDER = object()
 _CONFIDENT_METHODS = {"exact", "alias", "fuzzy"}
 
 
-def _has_active_prices(session: Session, service_id: int) -> bool:
+def _has_active_prices(
+    session: Session, service_id: int, city: str | None = None
+) -> bool:
+    filters = [
+        ClinicServicePrice.service_id == service_id,
+        ClinicServicePrice.is_active.is_(True),
+    ]
+    if city:
+        filters.append(ClinicServicePrice.city == city)
     return bool(
-        session.scalar(
-            select(func.count(ClinicServicePrice.id)).where(
-                ClinicServicePrice.service_id == service_id,
-                ClinicServicePrice.is_active.is_(True),
-            )
-        )
+        session.scalar(select(func.count(ClinicServicePrice.id)).where(*filters))
     )
 
 
 def _suggestion_for(
-    session: Session, service_id: int, score: float
+    session: Session, service_id: int, score: float, city: str | None = None
 ) -> Suggestion | None:
     svc = session.get(Service, service_id)
     if svc is None:
@@ -248,32 +261,67 @@ def _suggestion_for(
         category=svc.category.value,
         specialty=svc.specialty,
         score=round(float(score), 3),
-        has_prices=_has_active_prices(session, service_id),
+        has_prices=_has_active_prices(session, service_id, city),
     )
 
 
-def _canonical_service_id(session: Session, service_id: int) -> int:
+def _canonical_service_id(
+    session: Session, service_id: int, city: str | None = None
+) -> int:
     """Among services sharing this name_ru, the one with the most active prices.
 
     Duplicate catalog rows (same name, different specialty) fragment prices; resolving
     onto the best-covered sibling avoids landing on an empty duplicate. Prices are not
-    merged across siblings — only one service's prices are shown.
+    merged across siblings — only one service's prices are shown. With `city`, the
+    best-covered sibling is judged within that city so the resolved row matches the
+    city-scoped price view.
     """
     name = session.scalar(select(Service.name_ru).where(Service.id == service_id))
     if name is None:
         return service_id
+    price_join = (ClinicServicePrice.service_id == Service.id) & (
+        ClinicServicePrice.is_active.is_(True)
+    )
+    if city:
+        price_join = price_join & (ClinicServicePrice.city == city)
     rows = session.execute(
         select(Service.id, func.count(ClinicServicePrice.id).label("n"))
-        .outerjoin(
-            ClinicServicePrice,
-            (ClinicServicePrice.service_id == Service.id)
-            & (ClinicServicePrice.is_active.is_(True)),
-        )
+        .outerjoin(ClinicServicePrice, price_join)
         .where(Service.name_ru == name)
         .group_by(Service.id)
         .order_by(func.count(ClinicServicePrice.id).desc(), Service.id)
     ).all()
     return rows[0][0] if rows else service_id
+
+
+def cities_with_prices(
+    session: Session, service_id: int, *, exclude_city: str | None = None
+) -> list[tuple[str, int]]:
+    """Cities with active, non-stale prices for a service, busiest first.
+
+    Powers the cross-city hint: when the selected city has no prices, the user is told
+    where the service is actually available instead of dead-ending on an empty result.
+    """
+    now = datetime.now(UTC)
+    age_days = func.floor(
+        func.extract("epoch", now - ClinicServicePrice.parsed_at) / 86400.0
+    )
+    count = func.count(ClinicServicePrice.id).label("n")
+    filters = [
+        ClinicServicePrice.service_id == service_id,
+        ClinicServicePrice.is_active.is_(True),
+        ClinicServicePrice.city.is_not(None),
+        age_days <= STALE_DAYS,
+    ]
+    if exclude_city:
+        filters.append(ClinicServicePrice.city != exclude_city)
+    rows = session.execute(
+        select(ClinicServicePrice.city, count)
+        .where(*filters)
+        .group_by(ClinicServicePrice.city)
+        .order_by(count.desc(), ClinicServicePrice.city)
+    ).all()
+    return [(city, int(n)) for city, n in rows]
 
 
 def _priced_fallback(q: str, suggestions: list[Suggestion]) -> Suggestion | None:
@@ -300,6 +348,7 @@ def resolve_query(
     q: str,
     category: str | None = None,
     embedder=_USE_DEFAULT_EMBEDDER,
+    city: str | None = None,
 ) -> tuple[Suggestion | None, list[Suggestion]]:
     """Resolve a typed query to the best catalog service plus alternatives.
 
@@ -313,18 +362,18 @@ def resolve_query(
     if embedder is _USE_DEFAULT_EMBEDDER:
         embedder = get_embedder()
 
-    suggestions = autocomplete(session, q, limit=8, category=category)
+    suggestions = autocomplete(session, q, limit=8, category=category, city=city)
     result = ServiceMatcher(session, embedder=embedder).match(q)
 
     resolved: Suggestion | None = None
     if result.service_id is not None and result.method in _CONFIDENT_METHODS:
-        sid = _canonical_service_id(session, result.service_id)
-        candidate = _suggestion_for(session, sid, result.confidence)
+        sid = _canonical_service_id(session, result.service_id, city)
+        candidate = _suggestion_for(session, sid, result.confidence, city)
         if candidate is not None and not (category and candidate.category != category):
             resolved = candidate
 
     if result.method == "semantic" and result.service_id is not None:
-        semantic = _suggestion_for(session, result.service_id, result.confidence)
+        semantic = _suggestion_for(session, result.service_id, result.confidence, city)
         if semantic is not None and (not category or semantic.category == category):
             suggestions = [semantic] + [s for s in suggestions if s.id != semantic.id]
 
@@ -369,11 +418,13 @@ def prices_for_service(
             Service,
             RawPriceItem.metadata_json,
             age_days.label("age"),
+            Doctor,
         )
         .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
         .join(Service, ClinicServicePrice.service_id == Service.id)
         .outerjoin(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
         .outerjoin(RawPriceItem, ClinicServicePrice.raw_price_item_id == RawPriceItem.id)
+        .outerjoin(Doctor, ClinicServicePrice.doctor_id == Doctor.id)
         .where(
             ClinicServicePrice.service_id == service_id,
             ClinicServicePrice.is_active.is_(True),
@@ -391,9 +442,11 @@ def prices_for_service(
         stmt = stmt.where(age_days <= STALE_DAYS)
 
     cards: list[PriceCard] = []
-    for price, clinic, branch, service, metadata, age in session.execute(stmt):
+    for price, clinic, branch, service, metadata, age, doctor in session.execute(stmt):
         if branch is not None:
-            cards.append(_build_card(price, clinic, branch, service, metadata, int(age)))
+            cards.append(
+                _build_card(price, clinic, branch, service, metadata, int(age), doctor=doctor)
+            )
             continue
         # City-wide price (no branch): one card per clinic, bound to its nearest collection
         # point so the card carries real coords for distance, routing, and list<->map sync.
@@ -407,14 +460,17 @@ def prices_for_service(
         ).all()
         if not points:
             cards.append(
-                _build_card(price, clinic, None, service, metadata, int(age), branch_count=0)
+                _build_card(
+                    price, clinic, None, service, metadata, int(age),
+                    doctor=doctor, branch_count=0,
+                )
             )
             continue
         chosen = _nearest_point(points, lat, lng)
         cards.append(
             _build_card(
                 price, clinic, chosen, service, metadata, int(age),
-                branch_count=len(points),
+                doctor=doctor, branch_count=len(points),
             )
         )
     return _sort_cards(cards, sort)
@@ -437,11 +493,13 @@ def prices_for_doctor(
             Service,
             RawPriceItem.metadata_json,
             age_days.label("age"),
+            Doctor,
         )
         .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
         .join(Service, ClinicServicePrice.service_id == Service.id)
         .outerjoin(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
         .outerjoin(RawPriceItem, ClinicServicePrice.raw_price_item_id == RawPriceItem.id)
+        .outerjoin(Doctor, ClinicServicePrice.doctor_id == Doctor.id)
         .where(
             ClinicServicePrice.doctor_id == doctor_id,
             ClinicServicePrice.is_active.is_(True),
@@ -451,8 +509,8 @@ def prices_for_doctor(
         stmt = stmt.where(age_days <= STALE_DAYS)
 
     cards = [
-        _build_card(price, clinic, branch, service, metadata, int(age))
-        for price, clinic, branch, service, metadata, age in session.execute(stmt)
+        _build_card(price, clinic, branch, service, metadata, int(age), doctor=doctor)
+        for price, clinic, branch, service, metadata, age, doctor in session.execute(stmt)
     ]
     return _sort_cards(cards, "cheapest")
 
@@ -482,20 +540,29 @@ def _build_card(
     metadata: dict | None,
     age_days: int,
     branch_count: int = 1,
+    doctor: Doctor | None = None,
 ) -> PriceCard:
     meta = metadata or {}
+    # The enriched `doctors` table is the source of truth for photo/rating/experience;
+    # the price's raw metadata is only a fallback (it rarely carries an avatar).
     return PriceCard(
         price_id=price.id,
         service_id=service.id,
         service_name=service.name_ru,
         clinic_id=clinic.id,
         clinic_name=clinic.name,
-        doctor_name=_doctor_name(metadata),
-        doctor_id=_as_int(meta.get("doctor_id")),
-        doctor_avatar=_as_str(meta.get("doctor_avatar")),
-        doctor_experience=_as_int(meta.get("doctor_experience")),
-        doctor_rating=_rating(meta.get("doctor_rating")),
-        doctor_reviews=_as_int(meta.get("doctor_reviews")),
+        doctor_name=_doctor_name(metadata) or (doctor.name if doctor else None),
+        doctor_id=doctor.id if doctor else _as_int(meta.get("doctor_id")),
+        doctor_avatar=(doctor.avatar_url if doctor else None) or _as_str(meta.get("doctor_avatar")),
+        doctor_experience=(doctor.experience_years if doctor else None)
+        if (doctor and doctor.experience_years is not None)
+        else _as_int(meta.get("doctor_experience")),
+        doctor_rating=_rating(doctor.rating)
+        if (doctor and doctor.rating is not None)
+        else _rating(meta.get("doctor_rating")),
+        doctor_reviews=(doctor.review_count if doctor else None)
+        if (doctor and doctor.review_count is not None)
+        else _as_int(meta.get("doctor_reviews")),
         qualification=_as_str(meta.get("qualification")),
         district=_as_str(meta.get("district")),
         base_price_kzt=_as_int(meta.get("base_price")),
@@ -554,11 +621,13 @@ def featured_cards(session: Session, limit: int = 6) -> list[PriceCard]:
             Service,
             RawPriceItem.metadata_json,
             age_days.label("age"),
+            Doctor,
         )
         .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
         .join(Service, ClinicServicePrice.service_id == Service.id)
         .outerjoin(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
         .outerjoin(RawPriceItem, ClinicServicePrice.raw_price_item_id == RawPriceItem.id)
+        .outerjoin(Doctor, ClinicServicePrice.doctor_id == Doctor.id)
         .where(
             ClinicServicePrice.is_active.is_(True),
             age_days <= STALE_DAYS,
@@ -574,8 +643,8 @@ def featured_cards(session: Session, limit: int = 6) -> list[PriceCard]:
     )
 
     cards = [
-        _build_card(price, clinic, branch, service, metadata, int(age))
-        for price, clinic, branch, service, metadata, age in session.execute(stmt)
+        _build_card(price, clinic, branch, service, metadata, int(age), doctor=doctor)
+        for price, clinic, branch, service, metadata, age, doctor in session.execute(stmt)
     ]
     cards.sort(key=lambda c: ranked.get(c.service_id, len(ranked)))
     return cards
