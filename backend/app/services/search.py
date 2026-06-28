@@ -132,8 +132,8 @@ def autocomplete(
     Prefix matches rank first, then services that have prices, then trigram score.
     Duplicate `name_ru` rows (same service under different specialties) collapse to a
     single suggestion — disambiguated by `specialty` — so the list never repeats a name.
-    When `city` is given, `has_prices` reflects that city only, so a suggestion never
-    claims availability the city-scoped price view can't honour.
+    When `city` is given, `has_prices` reflects that city only, so empty-result
+    suggestions agree with the city-scoped price view.
     """
     q = (q or "").strip()
     if len(q) < 2:
@@ -272,9 +272,8 @@ def _canonical_service_id(
 
     Duplicate catalog rows (same name, different specialty) fragment prices; resolving
     onto the best-covered sibling avoids landing on an empty duplicate. Prices are not
-    merged across siblings — only one service's prices are shown. With `city`, the
-    best-covered sibling is judged within that city so the resolved row matches the
-    city-scoped price view.
+    merged across siblings — only one service's prices are shown. With `city`, coverage
+    is judged inside that city so the resolved row matches the city-scoped price view.
     """
     name = session.scalar(select(Service.name_ru).where(Service.id == service_id))
     if name is None:
@@ -297,11 +296,7 @@ def _canonical_service_id(
 def cities_with_prices(
     session: Session, service_id: int, *, exclude_city: str | None = None
 ) -> list[tuple[str, int]]:
-    """Cities with active, non-stale prices for a service, busiest first.
-
-    Powers the cross-city hint: when the selected city has no prices, the user is told
-    where the service is actually available instead of dead-ending on an empty result.
-    """
+    """Cities with active, non-stale prices for a service, busiest first."""
     now = datetime.now(UTC)
     age_days = func.floor(
         func.extract("epoch", now - ClinicServicePrice.parsed_at) / 86400.0
@@ -324,8 +319,13 @@ def cities_with_prices(
     return [(city, int(n)) for city, n in rows]
 
 
-def _priced_fallback(q: str, suggestions: list[Suggestion]) -> Suggestion | None:
-    """Best priced suggestion whose name contains every token of the query.
+def _priced_fallback(
+    session: Session,
+    anchor: str,
+    category: str | None = None,
+    city: str | None = None,
+) -> Suggestion | None:
+    """Best priced catalog service whose name contains every token of `anchor`.
 
     When the lexical match lands on a catalog row that carries no prices (e.g. a bare
     "ЭКГ" entry that nothing was scraped against), the real prices often live on a
@@ -333,13 +333,56 @@ def _priced_fallback(q: str, suggestions: list[Suggestion]) -> Suggestion | None
     priced relative beats a dead-end empty page. The whole-token requirement keeps it
     honest (§9): the user's full concept must appear as words in the candidate name, so
     we never drift to a loosely-fuzzy service.
+
+    This queries the whole catalog rather than a handed-in suggestion list: a priced
+    relative is usually a *non-prefix* match (it starts with "Суточное…", not the query),
+    so it ranks below every bare prefix row and falls out of the lexical top-N window.
+    Searching the catalog directly is the only way to surface it. Candidates are ordered
+    by active-price coverage so the best-covered relative wins.
     """
-    q_tokens = set(canonical_clean(q).split())
-    if not q_tokens:
+    tokens = [t for t in canonical_clean(anchor).split() if t]
+    if not tokens:
         return None
-    for s in suggestions:
-        if s.has_prices and q_tokens <= set(canonical_clean(s.name_ru).split()):
-            return s
+
+    filters = [
+        Service.category.not_in(HIDDEN_CATEGORIES),
+        ClinicServicePrice.is_active.is_(True),
+        *[Service.name_ru.ilike(f"%{t}%") for t in tokens],  # coarse prefilter
+    ]
+    if city:
+        filters.append(ClinicServicePrice.city == city)
+    if category:
+        try:
+            filters.append(Service.category == ServiceCategory(category))
+        except ValueError:
+            pass
+    name_sim = func.similarity(Service.name_ru, anchor)
+    rows = session.execute(
+        select(
+            Service.id,
+            Service.name_ru,
+            Service.category,
+            Service.specialty,
+            name_sim.label("score"),
+        )
+        .join(ClinicServicePrice, ClinicServicePrice.service_id == Service.id)
+        .where(*filters)
+        .group_by(Service.id)
+        .order_by(func.count(ClinicServicePrice.id).desc(), Service.name_ru)
+    ).all()
+
+    token_set = set(tokens)
+    for row in rows:
+        # ilike is a substring prefilter; enforce whole-token containment in Python.
+        if token_set <= set(canonical_clean(row.name_ru).split()):
+            return Suggestion(
+                id=row.id,
+                name_ru=row.name_ru,
+                category=row.category.value,
+                specialty=row.specialty,
+                score=round(float(row.score), 3),
+                has_prices=True,
+            )
     return None
 
 
@@ -378,7 +421,15 @@ def resolve_query(
             suggestions = [semantic] + [s for s in suggestions if s.id != semantic.id]
 
     if resolved is None or not resolved.has_prices:
-        fallback = _priced_fallback(q, suggestions)
+        # Anchor on the resolved row's name when we have one (so an alias hit like
+        # "ECG" → "ЭКГ" searches for "ЭКГ" relatives), else the raw query. Keep the
+        # concept coherent by constraining to the resolved row's category when no
+        # explicit category filter is set.
+        anchor = resolved.name_ru if resolved is not None else q
+        eff_category = category or (resolved.category if resolved is not None else None)
+        fallback = _priced_fallback(
+            session, anchor, category=eff_category, city=city
+        )
         if fallback is not None:
             resolved = fallback
 
@@ -445,7 +496,9 @@ def prices_for_service(
     for price, clinic, branch, service, metadata, age, doctor in session.execute(stmt):
         if branch is not None:
             cards.append(
-                _build_card(price, clinic, branch, service, metadata, int(age), doctor=doctor)
+                _build_card(
+                    price, clinic, branch, service, metadata, int(age), doctor=doctor
+                )
             )
             continue
         # City-wide price (no branch): one card per clinic, bound to its nearest collection

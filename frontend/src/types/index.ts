@@ -114,6 +114,12 @@ export interface SearchResponse {
   suggestions: Suggestion[];
   cards: PriceCard[];
   count: number;
+  other_cities: CityCount[];
+}
+
+export interface CityCount {
+  name: string;
+  count: number;
 }
 
 export interface MapPin {

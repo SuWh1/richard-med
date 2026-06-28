@@ -402,6 +402,9 @@ export function ResultsPage() {
             <EmptyState
               query={state.q}
               suggestions={searchQuery.data?.suggestions ?? []}
+              currentCity={state.city}
+              otherCities={searchQuery.data?.other_cities ?? []}
+              onPickCity={(city) => patch({ city })}
               onPickSuggestion={pickSuggestion}
             />
           )}

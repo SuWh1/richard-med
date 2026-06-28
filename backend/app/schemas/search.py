@@ -54,12 +54,18 @@ class PriceCard(BaseModel):
     branch_count: int = 1
 
 
+class CityCount(BaseModel):
+    name: str
+    count: int
+
+
 class SearchResponse(BaseModel):
     query: str
     resolved_service: Suggestion | None
     suggestions: list[Suggestion]
     cards: list[PriceCard]
     count: int
+    other_cities: list[CityCount] = []
 
 
 class CityOut(BaseModel):

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models import Service
 from app.schemas.clinics import CompareInsight, CompareResult
-from app.schemas.search import CityOut, MapPin, PriceCard, SearchResponse
+from app.schemas.search import CityCount, CityOut, MapPin, PriceCard, SearchResponse
 from app.services import clinics, compare_insight, live_search, search
 
 router = APIRouter()
@@ -71,7 +71,7 @@ def search_services(
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     def _resolve_and_price() -> tuple:
-        found, sugg = search.resolve_query(db, q, category=category)
+        found, sugg = search.resolve_query(db, q, category=category, city=city)
         rows = (
             search.prices_for_service(
                 db,
@@ -99,12 +99,24 @@ def search_services(
     if len(cards) <= 1 and live_search.live_fetch_doq(db, q, city) is not None:
         resolved, suggestions, cards = _resolve_and_price()
 
+    other_cities = (
+        [
+            CityCount(name=name, count=n)
+            for name, n in search.cities_with_prices(
+                db, resolved.id, exclude_city=city
+            )
+        ]
+        if not cards and resolved is not None
+        else []
+    )
+
     return SearchResponse(
         query=q,
         resolved_service=resolved,
         suggestions=suggestions,
         cards=cards,
         count=len(cards),
+        other_cities=other_cities,
     )
 
 

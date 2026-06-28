@@ -84,6 +84,7 @@ const searchResponse: SearchResponse = {
   suggestions: [],
   cards: [card],
   count: 2,
+  other_cities: [],
 };
 
 const emptyCabinet: CabinetDashboard = {

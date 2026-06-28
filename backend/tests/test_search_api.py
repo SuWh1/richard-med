@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.db.session import get_db
 from app.main import app
 from app.models import (
     Clinic,
@@ -439,6 +440,57 @@ def test_should_fall_back_to_priced_relative_when_exact_match_has_no_prices(db_s
     assert resolved.has_prices
 
 
+def test_should_fall_back_to_priced_relative_outside_suggestion_window(db_session):
+    # Many bare prefix entries crowd the priced relative out of the top-8 lexical window
+    # (prefix matches rank first). The fallback must still find it by querying the
+    # catalog, not just the suggestions it was handed — mirrors real "ЭКГ" with dozens of
+    # bare ЭКГ-* rows pushing "Суточное мониторирование ЭКГ (по Холтеру)" out of view.
+    bare = Service(
+        service_key="t-bare-wide",
+        name_ru="Зззшир",
+        category=ServiceCategory.diagnostic,
+    )
+    db_session.add(bare)
+    for i in range(10):
+        db_session.add(
+            Service(
+                service_key=f"t-bare-wide-{i}",
+                name_ru=f"Зззшир вариант {i}",
+                category=ServiceCategory.diagnostic,
+            )
+        )
+    priced = Service(
+        service_key="t-priced-wide",
+        name_ru="Суточное мониторирование Зззшир (по Зззхолтеру)",
+        category=ServiceCategory.diagnostic,
+    )
+    db_session.add(priced)
+    db_session.flush()
+
+    clinic = Clinic(name="Зззклиника шир", source_name="zzz-test")
+    db_session.add(clinic)
+    db_session.flush()
+    db_session.add(
+        ClinicServicePrice(
+            clinic_id=clinic.id,
+            service_id=priced.id,
+            city="Астана",
+            price_kzt=5000,
+            source_url="https://example.test/wide",
+            parsed_at=datetime.now(UTC),
+            is_active=True,
+        )
+    )
+    db_session.flush()
+
+    resolved, suggestions = search.resolve_query(db_session, "Зззшир")
+
+    assert priced.id not in {s.id for s in suggestions}  # outside the lexical window
+    assert resolved is not None
+    assert resolved.id == priced.id  # ...yet still resolved via catalog-wide fallback
+    assert resolved.has_prices
+
+
 def _price_in(session, service_id, *, city, price=5000):
     clinic = Clinic(name=f"Зззгород {city}", source_name="zzz-city")
     session.add(clinic)
@@ -491,7 +543,7 @@ def test_should_list_other_cities_with_prices_excluding_selected(db_session):
 
     by_city = {city: count for city, count in rows}
     assert by_city == {"Темиртау": 2, "Караганда": 1}
-    assert rows[0][0] == "Темиртау"  # most prices first
+    assert rows[0][0] == "Темиртау"
 
 
 def test_should_return_other_cities_when_empty_in_selected_city(db_session):
@@ -504,10 +556,15 @@ def test_should_return_other_cities_when_empty_in_selected_city(db_session):
     db_session.flush()
     _price_in(db_session, svc.id, city="Караганда")
 
-    resp = client.get(
-        "/api/v1/search",
-        params={"q": "Зззпустойгород уникальная услуга", "city": "Астана"},
-    )
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        resp = client.get(
+            "/api/v1/search",
+            params={"q": "Зззпустойгород уникальная услуга", "city": "Астана"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
     assert resp.status_code == 200
     body = resp.json()
     assert body["count"] == 0

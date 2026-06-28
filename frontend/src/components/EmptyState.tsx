@@ -1,15 +1,26 @@
 import { Search } from "lucide-react";
 
-import type { Suggestion } from "@/types";
+import type { CityCount, Suggestion } from "@/types";
 
 interface EmptyStateProps {
   query: string;
   suggestions: Suggestion[];
+  currentCity?: string;
+  otherCities?: CityCount[];
+  onPickCity?: (city: string) => void;
   onPickSuggestion: (suggestion: Suggestion) => void;
 }
 
-export function EmptyState({ query, suggestions, onPickSuggestion }: EmptyStateProps) {
+export function EmptyState({
+  query,
+  suggestions,
+  currentCity,
+  otherCities = [],
+  onPickCity,
+  onPickSuggestion,
+}: EmptyStateProps) {
   const didYouMean = suggestions.filter((s) => s.has_prices).slice(0, 3);
+  const cityHints = otherCities.slice(0, 4);
 
   return (
     <div className="flex min-h-[55vh] flex-col items-center justify-center px-4 text-center">
@@ -20,6 +31,29 @@ export function EmptyState({ query, suggestions, onPickSuggestion }: EmptyStateP
         По запросу «{query}» ничего не нашли
       </div>
       <div className="text-sm text-muted-foreground">Попробуйте уточнить услугу</div>
+
+      {cityHints.length > 0 && (
+        <div className="mt-5 max-w-xl rounded-xl border border-border bg-white p-4 text-sm shadow-sm">
+          <div className="font-medium text-foreground">
+            {currentCity ? `В городе ${currentCity} свежих цен нет` : "Свежих цен нет"}
+          </div>
+          <div className="mt-1 text-muted-foreground">
+            Но эта услуга есть в других городах:
+          </div>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            {cityHints.map((city) => (
+              <button
+                key={city.name}
+                type="button"
+                onClick={() => onPickCity?.(city.name)}
+                className="rounded-full border border-primary/30 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:border-primary hover:bg-accent/40"
+              >
+                {city.name} · {city.count}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {didYouMean.length > 0 && (
         <div className="mt-5 text-sm text-muted-foreground">
