@@ -1,5 +1,4 @@
 import { type ReactNode } from "react";
-import { Link } from "react-router-dom";
 
 import { Logo } from "@/components/Logo";
 
@@ -13,9 +12,9 @@ interface AuthShellProps {
 export function AuthShell({ title, subtitle, children, footer }: AuthShellProps) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center bg-background px-4 py-10">
-      <Link to="/" className="mb-8">
+      <div className="mb-8">
         <Logo />
-      </Link>
+      </div>
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-7 shadow-sm">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}

@@ -93,12 +93,31 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
 
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton className="pointer-events-none" tooltip={city}>
+              <MapPin className="text-primary" />
+              <span className="font-medium">{city}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           {isAuthenticated ? (
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={onLogout} tooltip={`Выйти (${user?.email})`}>
-                <LogOut />
-                <span className="truncate">Выйти</span>
-              </SidebarMenuButton>
+              <div className="mt-1 flex items-center gap-2 rounded-md border border-sidebar-border px-2 py-1.5">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold uppercase text-primary">
+                  {(user?.email ?? "?").charAt(0)}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                  {user?.email}
+                </span>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  title="Выйти"
+                  aria-label="Выйти"
+                  className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
             </SidebarMenuItem>
           ) : (
             <SidebarMenuItem>
@@ -110,12 +129,6 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
-          <SidebarMenuItem>
-            <SidebarMenuButton className="pointer-events-none" tooltip={city}>
-              <MapPin className="text-primary" />
-              <span className="font-medium">{city}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
