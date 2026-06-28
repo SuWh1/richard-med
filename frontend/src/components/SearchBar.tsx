@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 
 import type { Suggestion } from "@/types";
 import { cn } from "@/components/ui/utils";
@@ -22,10 +22,8 @@ export function SearchBar({
   variant = "hero",
 }: SearchBarProps) {
   const [focused, setFocused] = useState(false);
-  // Services with prices are the only useful picks — show them; fall back to the
-  // raw list only when nothing matched has a price (so the dropdown isn't empty).
-  const priced = suggestions.filter((s) => s.has_prices);
-  const shown = priced.length > 0 ? priced : suggestions;
+  // Only services with prices are useful picks — never suggest dead-end "нет цен" rows.
+  const shown = suggestions.filter((s) => s.has_prices);
   const showDropdown = focused && shown.length > 0;
   const compact = variant === "compact";
 
@@ -74,6 +72,17 @@ export function SearchBar({
             compact ? "text-sm" : "text-base",
           )}
         />
+        {value && (
+          <button
+            type="button"
+            aria-label="Очистить"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onChange("")}
+            className="flex shrink-0 items-center justify-center rounded-full bg-secondary p-1 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
+          >
+            <X className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+          </button>
+        )}
         {!compact && (
           <button
             type="submit"

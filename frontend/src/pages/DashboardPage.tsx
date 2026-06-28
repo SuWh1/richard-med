@@ -35,6 +35,7 @@ import { ServicesTable } from "@/components/ServicesTable";
 import { UnmatchedQueue } from "@/components/UnmatchedQueue";
 
 const FALLBACK_CITIES = ["Астана", "Алматы"];
+const ALL_CITIES = "__all__"; // backend sentinel: run every supported city
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
@@ -135,7 +136,7 @@ export function DashboardPage() {
   return (
     <AppShell
       breadcrumb={[{ label: "Кабинет" }, { label: "Source Health" }]}
-      city={city}
+      city={city === ALL_CITIES ? "Все города" : city}
     >
       <div className="mx-auto max-w-6xl px-4 py-8">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -151,6 +152,7 @@ export function DashboardPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value={ALL_CITIES}>Все города</SelectItem>
               {cityNames.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}

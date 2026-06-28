@@ -81,7 +81,7 @@ function PanToSelected({
     const pin = pins.find((p) => p.clinic_id === selectedClinicId);
     if (!pin) return;
     // Zoom in (not just pan) so the highlighted clinic is clearly located, not a dot in a wide view.
-    map.setView([pin.lat, pin.lng], Math.max(map.getZoom(), 14), {
+    map.setView([pin.lat, pin.lng], Math.max(map.getZoom(), 15), {
       animate: true,
       duration: 0.4,
     });
@@ -138,7 +138,7 @@ export function ClinicMap({
             })}
             eventHandlers={{ click: () => onSelectClinic(pin.clinic_id) }}
           >
-            <Popup>
+            <Popup autoPan={false}>
               <MapPopupCard pin={pin} median={median} />
             </Popup>
           </Marker>

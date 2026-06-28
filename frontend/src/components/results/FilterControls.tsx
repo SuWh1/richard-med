@@ -82,6 +82,7 @@ export function FilterControls({ state, cities, onPatch }: FilterControlsProps) 
             onChange={(e) => setMin(e.target.value)}
             onBlur={applyPrice}
             onKeyDown={(e) => e.key === "Enter" && applyPrice()}
+            className="border-2 bg-white text-center font-medium text-foreground placeholder:font-normal placeholder:text-muted-foreground"
           />
           <span className="text-muted-foreground">–</span>
           <Input
@@ -91,6 +92,7 @@ export function FilterControls({ state, cities, onPatch }: FilterControlsProps) 
             onChange={(e) => setMax(e.target.value)}
             onBlur={applyPrice}
             onKeyDown={(e) => e.key === "Enter" && applyPrice()}
+            className="border-2 bg-white text-center font-medium text-foreground placeholder:font-normal placeholder:text-muted-foreground"
           />
         </div>
       </div>

@@ -171,7 +171,10 @@ export function ResultsPage() {
       />
 
       <div className="mx-auto flex w-full max-w-[1400px] flex-1">
-        <div ref={listRef} className="w-full p-4 lg:w-[58%] lg:p-5">
+        <div
+          ref={listRef}
+          className={`w-full p-4 lg:p-5 ${hasMap ? "lg:w-[58%]" : ""}`}
+        >
           {searchQuery.isLoading && <ClinicCardSkeletonList count={5} />}
 
           {searchQuery.isError && (
@@ -190,7 +193,6 @@ export function ResultsPage() {
               query={state.q}
               suggestions={searchQuery.data?.suggestions ?? []}
               onPickSuggestion={pickSuggestion}
-              onPickPopular={runSearch}
             />
           )}
 
