@@ -25,6 +25,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - ./backend/.env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-richard_med}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-richard_med}
@@ -33,13 +35,18 @@ services:
       POSTGRES_PORT: 5432
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:5173}
       BLUEPRINT_PATH: /docs/MedServicePrice_Winning_Blueprint.xlsx
+      FASTEMBED_CACHE_DIR: /cache/fastembed
+      # HF's Xet transfer backend hangs at 0 bytes in this network; force classic CDN.
+      HF_HUB_DISABLE_XET: "1"
     ports:
       - "${BACKEND_PORT:-8001}:8000"
     volumes:
       - ./backend:/app
       - /app/.venv
       - ./docs:/docs:ro
+      - fastembed-cache:/cache/fastembed
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
 volumes:
   postgres-data:
+  fastembed-cache:

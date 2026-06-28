@@ -10,12 +10,17 @@ semantic stage.
 """
 
 import logging
+import os
 from collections.abc import Callable
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+# Persist the downloaded model outside the container's ephemeral FS so a rebuild
+# doesn't re-download it (see the matching volume in docker-compose.yml).
+CACHE_DIR = os.getenv("FASTEMBED_CACHE_DIR") or None
 
 
 def available() -> bool:
@@ -31,7 +36,7 @@ def _model():
     from fastembed import TextEmbedding
 
     logger.info("loading embedding model %s", MODEL_NAME)
-    return TextEmbedding(model_name=MODEL_NAME)
+    return TextEmbedding(model_name=MODEL_NAME, cache_dir=CACHE_DIR)
 
 
 def embed_passages(texts: list[str]) -> list[list[float]]:

@@ -15,7 +15,7 @@ from app.models import (
     ServiceCategory,
 )
 from app.services.embeddings import get_embedder
-from app.services.normalization import ServiceMatcher
+from app.services.normalization import ServiceMatcher, canonical_clean
 
 FRESH_DAYS = 7
 STALE_DAYS = 30
@@ -273,6 +273,25 @@ def _canonical_service_id(session: Session, service_id: int) -> int:
     return rows[0][0] if rows else service_id
 
 
+def _priced_fallback(q: str, suggestions: list[Suggestion]) -> Suggestion | None:
+    """Best priced suggestion whose name contains every token of the query.
+
+    When the lexical match lands on a catalog row that carries no prices (e.g. a bare
+    "ЭКГ" entry that nothing was scraped against), the real prices often live on a
+    longer relative — "Суточное мониторирование ЭКГ (по Холтеру)". Resolving to that
+    priced relative beats a dead-end empty page. The whole-token requirement keeps it
+    honest (§9): the user's full concept must appear as words in the candidate name, so
+    we never drift to a loosely-fuzzy service.
+    """
+    q_tokens = set(canonical_clean(q).split())
+    if not q_tokens:
+        return None
+    for s in suggestions:
+        if s.has_prices and q_tokens <= set(canonical_clean(s.name_ru).split()):
+            return s
+    return None
+
+
 def resolve_query(
     session: Session,
     q: str,
@@ -285,6 +304,8 @@ def resolve_query(
     only ever offered as a *suggestion*, never silently resolved — generic embeddings
     can't reliably separate near-identical lab analytes, so a human confirms (§9).
     Below the lexical floor we resolve nothing and return "did you mean" suggestions.
+    When the resolved row has no prices, fall back to a priced relative (see
+    `_priced_fallback`) so an exact-but-empty catalog entry doesn't dead-end the search.
     """
     if embedder is _USE_DEFAULT_EMBEDDER:
         embedder = get_embedder()
@@ -292,19 +313,24 @@ def resolve_query(
     suggestions = autocomplete(session, q, limit=8, category=category)
     result = ServiceMatcher(session, embedder=embedder).match(q)
 
+    resolved: Suggestion | None = None
     if result.service_id is not None and result.method in _CONFIDENT_METHODS:
         sid = _canonical_service_id(session, result.service_id)
-        resolved = _suggestion_for(session, sid, result.confidence)
-        if resolved is not None and category and resolved.category != category:
-            return None, suggestions
-        return resolved, suggestions
+        candidate = _suggestion_for(session, sid, result.confidence)
+        if candidate is not None and not (category and candidate.category != category):
+            resolved = candidate
 
     if result.method == "semantic" and result.service_id is not None:
         semantic = _suggestion_for(session, result.service_id, result.confidence)
         if semantic is not None and (not category or semantic.category == category):
             suggestions = [semantic] + [s for s in suggestions if s.id != semantic.id]
 
-    return None, suggestions
+    if resolved is None or not resolved.has_prices:
+        fallback = _priced_fallback(q, suggestions)
+        if fallback is not None:
+            resolved = fallback
+
+    return resolved, suggestions
 
 
 def prices_for_service(

@@ -1,4 +1,5 @@
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -30,11 +31,16 @@ async def lifespan(app: FastAPI):
     finally:
         session.close()
 
-    try:
-        if embeddings.warmup():
-            logger.info("Embedding model pre-loaded; semantic search ready.")
-    except Exception:
-        logger.exception("Embedding warmup failed; model will load on first query.")
+    # Warm up off the startup path: a slow/failed model download must never block the
+    # app from serving. The model still lazy-loads on first query if this hasn't finished.
+    def _warmup():
+        try:
+            if embeddings.warmup():
+                logger.info("Embedding model pre-loaded; semantic search ready.")
+        except Exception:
+            logger.exception("Embedding warmup failed; model will load on first query.")
+
+    threading.Thread(target=_warmup, name="embeddings-warmup", daemon=True).start()
 
     yield
 
