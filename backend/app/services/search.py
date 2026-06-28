@@ -276,8 +276,10 @@ def _canonical_service_id(session: Session, service_id: int) -> int:
     return rows[0][0] if rows else service_id
 
 
-def _priced_fallback(q: str, suggestions: list[Suggestion]) -> Suggestion | None:
-    """Best priced suggestion whose name contains every token of the query.
+def _priced_fallback(
+    session: Session, anchor: str, category: str | None = None
+) -> Suggestion | None:
+    """Best priced catalog service whose name contains every token of `anchor`.
 
     When the lexical match lands on a catalog row that carries no prices (e.g. a bare
     "ЭКГ" entry that nothing was scraped against), the real prices often live on a
@@ -285,13 +287,54 @@ def _priced_fallback(q: str, suggestions: list[Suggestion]) -> Suggestion | None
     priced relative beats a dead-end empty page. The whole-token requirement keeps it
     honest (§9): the user's full concept must appear as words in the candidate name, so
     we never drift to a loosely-fuzzy service.
+
+    This queries the whole catalog rather than a handed-in suggestion list: a priced
+    relative is usually a *non-prefix* match (it starts with "Суточное…", not the query),
+    so it ranks below every bare prefix row and falls out of the lexical top-N window.
+    Searching the catalog directly is the only way to surface it. Candidates are ordered
+    by active-price coverage so the best-covered relative wins.
     """
-    q_tokens = set(canonical_clean(q).split())
-    if not q_tokens:
+    tokens = [t for t in canonical_clean(anchor).split() if t]
+    if not tokens:
         return None
-    for s in suggestions:
-        if s.has_prices and q_tokens <= set(canonical_clean(s.name_ru).split()):
-            return s
+
+    filters = [
+        Service.category.not_in(HIDDEN_CATEGORIES),
+        ClinicServicePrice.is_active.is_(True),
+        *[Service.name_ru.ilike(f"%{t}%") for t in tokens],  # coarse prefilter
+    ]
+    if category:
+        try:
+            filters.append(Service.category == ServiceCategory(category))
+        except ValueError:
+            pass
+    name_sim = func.similarity(Service.name_ru, anchor)
+    rows = session.execute(
+        select(
+            Service.id,
+            Service.name_ru,
+            Service.category,
+            Service.specialty,
+            name_sim.label("score"),
+        )
+        .join(ClinicServicePrice, ClinicServicePrice.service_id == Service.id)
+        .where(*filters)
+        .group_by(Service.id)
+        .order_by(func.count(ClinicServicePrice.id).desc(), Service.name_ru)
+    ).all()
+
+    token_set = set(tokens)
+    for row in rows:
+        # ilike is a substring prefilter; enforce whole-token containment in Python.
+        if token_set <= set(canonical_clean(row.name_ru).split()):
+            return Suggestion(
+                id=row.id,
+                name_ru=row.name_ru,
+                category=row.category.value,
+                specialty=row.specialty,
+                score=round(float(row.score), 3),
+                has_prices=True,
+            )
     return None
 
 
@@ -329,7 +372,13 @@ def resolve_query(
             suggestions = [semantic] + [s for s in suggestions if s.id != semantic.id]
 
     if resolved is None or not resolved.has_prices:
-        fallback = _priced_fallback(q, suggestions)
+        # Anchor on the resolved row's name when we have one (so an alias hit like
+        # "ECG" → "ЭКГ" searches for "ЭКГ" relatives), else the raw query. Keep the
+        # concept coherent by constraining to the resolved row's category when no
+        # explicit category filter is set.
+        anchor = resolved.name_ru if resolved is not None else q
+        eff_category = category or (resolved.category if resolved is not None else None)
+        fallback = _priced_fallback(session, anchor, category=eff_category)
         if fallback is not None:
             resolved = fallback
 

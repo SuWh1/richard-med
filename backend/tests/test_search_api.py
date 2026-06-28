@@ -437,3 +437,54 @@ def test_should_fall_back_to_priced_relative_when_exact_match_has_no_prices(db_s
     assert resolved is not None
     assert resolved.id == priced.id
     assert resolved.has_prices
+
+
+def test_should_fall_back_to_priced_relative_outside_suggestion_window(db_session):
+    # Many bare prefix entries crowd the priced relative out of the top-8 lexical window
+    # (prefix matches rank first). The fallback must still find it by querying the
+    # catalog, not just the suggestions it was handed — mirrors real "ЭКГ" with dozens of
+    # bare ЭКГ-* rows pushing "Суточное мониторирование ЭКГ (по Холтеру)" out of view.
+    bare = Service(
+        service_key="t-bare-wide",
+        name_ru="Зззшир",
+        category=ServiceCategory.diagnostic,
+    )
+    db_session.add(bare)
+    for i in range(10):
+        db_session.add(
+            Service(
+                service_key=f"t-bare-wide-{i}",
+                name_ru=f"Зззшир вариант {i}",
+                category=ServiceCategory.diagnostic,
+            )
+        )
+    priced = Service(
+        service_key="t-priced-wide",
+        name_ru="Суточное мониторирование Зззшир (по Зззхолтеру)",
+        category=ServiceCategory.diagnostic,
+    )
+    db_session.add(priced)
+    db_session.flush()
+
+    clinic = Clinic(name="Зззклиника шир", source_name="zzz-test")
+    db_session.add(clinic)
+    db_session.flush()
+    db_session.add(
+        ClinicServicePrice(
+            clinic_id=clinic.id,
+            service_id=priced.id,
+            city="Астана",
+            price_kzt=5000,
+            source_url="https://example.test/wide",
+            parsed_at=datetime.now(UTC),
+            is_active=True,
+        )
+    )
+    db_session.flush()
+
+    resolved, suggestions = search.resolve_query(db_session, "Зззшир")
+
+    assert priced.id not in {s.id for s in suggestions}  # outside the lexical window
+    assert resolved is not None
+    assert resolved.id == priced.id  # ...yet still resolved via catalog-wide fallback
+    assert resolved.has_prices
