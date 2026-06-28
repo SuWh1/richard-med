@@ -1,10 +1,8 @@
-import logging
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.cities import CITY_NAMES
-from app.db.session import SessionLocal, get_db
+from app.db.session import get_db
 from app.schemas.admin import (
     CatalogPage,
     ParseRunDetail,
@@ -15,70 +13,11 @@ from app.schemas.admin import (
 )
 from app.scrapers.registry import available_sources
 from app.services import admin
-from app.services.catalog_grow import grow_catalog
-from app.services.embeddings import get_embedder
-from app.services.llm_verify import get_verifier
-from app.services.pipeline import run_source
-from app.services.twogis_sync import refresh_reviews
+from app.services.parse_runner import run_sources
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_GROW_BATCH = 25
 ALL_CITIES = "__all__"  # sentinel: run every supported city
-
-
-def _grow_and_reparse(
-    session, source_names: list[str], cities: list[str], embedder
-) -> None:
-    """After a run, drain the unmatched queue into the catalog and re-parse so the
-    newly-added services match instead of lingering as pending suggestions."""
-    try:
-        grow_catalog(session)  # "nothing similar" rows — no AI, one transaction
-        session.commit()
-        verifier = get_verifier()
-        if verifier is not None:
-            while True:
-                batch = grow_catalog(session, verifier=verifier, limit=_GROW_BATCH)
-                session.commit()
-                if batch["aliased"] + batch["added"] + batch["deferred"] == 0:
-                    break
-        for city in cities:
-            for source in source_names:
-                run_source(session, source, city, publish=True, embedder=embedder)
-                session.commit()
-    except Exception:  # noqa: BLE001 — growth is best-effort; the run already published
-        logger.exception("catalog grow / re-parse failed for %s/%s", source_names, cities)
-        session.rollback()
-
-
-def _run_sources(source_names: list[str], cities: list[str]) -> None:
-    session = SessionLocal()
-    embedder = get_embedder()
-    try:
-        for city in cities:
-            for source in source_names:
-                try:
-                    run_source(session, source, city, publish=True, embedder=embedder)
-                    session.commit()
-                except Exception:  # noqa: BLE001 — isolate one source/city from the rest
-                    logger.exception("background run failed for %s/%s", source, city)
-                    session.rollback()
-        _grow_and_reparse(session, source_names, cities, embedder)
-        _refresh_twogis_reviews(session)
-    finally:
-        session.close()
-
-
-def _refresh_twogis_reviews(session) -> None:
-    """Keep 2GIS ratings/reviews current alongside the price parse. Step B only —
-    plain HTTP off each branch's stored firm_id, no browser. Firm-id discovery
-    (Step A) is a separate offline job (app.scripts.discover_2gis_firms)."""
-    try:
-        refresh_reviews(session)
-    except Exception:  # noqa: BLE001 — ratings are best-effort; prices already published
-        logger.exception("2GIS reviews refresh failed")
-        session.rollback()
 
 
 @router.post("/parsers/run", response_model=RunTrigger)
@@ -93,7 +32,7 @@ def trigger_run(
         raise HTTPException(status_code=404, detail=f"Unknown source(s): {unknown}")
 
     cities = list(CITY_NAMES) if city == ALL_CITIES else [city]
-    background_tasks.add_task(_run_sources, sources, cities)
+    background_tasks.add_task(run_sources, sources, cities)
     where = "всех городов" if city == ALL_CITIES else f"города {city}"
     return RunTrigger(
         accepted=True,

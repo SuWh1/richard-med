@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.services import embeddings
 from app.services.catalog_import import ensure_catalog_loaded
+from app.services.scheduler import create_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,12 @@ async def lifespan(app: FastAPI):
 
     threading.Thread(target=_warmup, name="embeddings-warmup", daemon=True).start()
 
-    yield
+    scheduler = create_scheduler()
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)

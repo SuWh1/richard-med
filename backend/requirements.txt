@@ -13,3 +13,6 @@ openpyxl==3.1.5
 fastembed==0.8.0
 PyJWT[crypto]>=2.10
 bcrypt>=4.0
+
+# Nightly parser cron scheduler
+APScheduler==3.11.2
