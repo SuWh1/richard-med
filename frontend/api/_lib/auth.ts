@@ -13,14 +13,30 @@ const ADMIN_EMAILS = (
 
 const isProd = process.env.NODE_ENV === "production";
 
+// On Vercel, fall back to the project's production URL if BETTER_AUTH_URL isn't set.
+const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : undefined;
+const baseURL = process.env.BETTER_AUTH_URL ?? vercelUrl;
+
+const trustedOrigins = [
+  ...(process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "").split(",").map((s) => s.trim()),
+  vercelUrl,
+].filter((s): s is string => Boolean(s));
+
+const connectionString = process.env.DATABASE_URL;
+// Managed/cloud Postgres needs TLS; localhost does not.
+const needsSsl =
+  !!connectionString && !/localhost|127\.0\.0\.1/.test(connectionString);
+
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL,
+  baseURL,
   secret: process.env.BETTER_AUTH_SECRET,
-  database: new Pool({ connectionString: process.env.DATABASE_URL }),
-  trustedOrigins: (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
+  database: new Pool({
+    connectionString,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+  }),
+  trustedOrigins,
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: true,
