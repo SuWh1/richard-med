@@ -1,6 +1,16 @@
-import { Link, NavLink, useLocation } from "react-router-dom";
-import { BarChart3, LayoutGrid, MapPin, Search } from "lucide-react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import {
+  BarChart3,
+  LayoutGrid,
+  LogIn,
+  LogOut,
+  MapPin,
+  Search,
+  User,
+} from "lucide-react";
 
+import { signOut } from "@/lib/auth-client";
+import { useAuth } from "@/lib/useAuth";
 import {
   Sidebar,
   SidebarContent,
@@ -16,8 +26,9 @@ import {
 const NAV = [
   { title: "Поиск", url: "/", icon: Search },
   { title: "Аналитика", url: "/analytics", icon: BarChart3 },
-  { title: "Кабинет", url: "/dashboard", icon: LayoutGrid },
+  { title: "Кабинет", url: "/cabinet", icon: User },
 ];
+const ADMIN_NAV = [{ title: "Source Health", url: "/dashboard", icon: LayoutGrid }];
 
 function isActive(pathname: string, url: string): boolean {
   if (url === "/") return pathname === "/" || pathname.startsWith("/search");
@@ -26,6 +37,16 @@ function isActive(pathname: string, url: string): boolean {
 
 export function AppSidebar({ city = "Астана" }: { city?: string }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { isAdmin, isAuthenticated, user } = useAuth();
+
+  // Source Health is admin-only — non-admins never even see the link.
+  const items = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
+
+  const logout = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   return (
     <Sidebar variant="inset" collapsible="offcanvas">
@@ -52,7 +73,7 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
         <SidebarGroup>
           <SidebarGroupLabel>Навигация</SidebarGroupLabel>
           <SidebarMenu>
-            {NAV.map((item) => (
+            {items.map((item) => (
               <SidebarMenuItem key={item.url}>
                 <SidebarMenuButton
                   asChild
@@ -72,6 +93,23 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
 
       <SidebarFooter>
         <SidebarMenu>
+          {isAuthenticated ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={logout} tooltip={`Выйти (${user?.email})`}>
+                <LogOut />
+                <span className="truncate">Выйти</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : (
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip="Войти">
+                <Link to="/login">
+                  <LogIn />
+                  <span>Войти</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <SidebarMenuButton className="pointer-events-none" tooltip={city}>
               <MapPin className="text-primary" />

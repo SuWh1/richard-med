@@ -21,6 +21,8 @@ import type {
   UnmatchedParams,
 } from "@/types";
 
+import { authHeader } from "./auth-client";
+
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001/api/v1";
 
 async function getJson<T>(path: string, params: Record<string, unknown>): Promise<T> {
@@ -30,7 +32,9 @@ async function getJson<T>(path: string, params: Record<string, unknown>): Promis
       query.set(key, String(value));
     }
   }
-  const response = await fetch(`${BASE_URL}${path}?${query.toString()}`);
+  // Admin endpoints are JWT-protected on the backend.
+  const headers = path.startsWith("/admin") ? await authHeader() : undefined;
+  const response = await fetch(`${BASE_URL}${path}?${query.toString()}`, { headers });
   if (!response.ok) {
     throw new Error(`Запрос не выполнен (${response.status})`);
   }
@@ -114,6 +118,7 @@ export async function triggerRun(source: string | null, city: string): Promise<R
   if (source) query.set("source", source);
   const response = await fetch(`${BASE_URL}/admin/parsers/run?${query.toString()}`, {
     method: "POST",
+    headers: await authHeader(),
   });
   if (!response.ok) {
     throw new Error(`Не удалось запустить парсер (${response.status})`);

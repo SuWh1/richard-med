@@ -4,6 +4,7 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { TopProgress } from "@/components/TopProgress";
+import { RequireAdmin, RequireAuth } from "@/components/auth/RouteGuards";
 
 const LandingPage = lazy(() =>
   import("@/pages/LandingPage").then((m) => ({ default: m.LandingPage })),
@@ -26,6 +27,18 @@ const DashboardPage = lazy(() =>
 const NotFoundPage = lazy(() =>
   import("@/pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage })),
 );
+const LoginPage = lazy(() =>
+  import("@/pages/auth/LoginPage").then((m) => ({ default: m.LoginPage })),
+);
+const SignupPage = lazy(() =>
+  import("@/pages/auth/SignupPage").then((m) => ({ default: m.SignupPage })),
+);
+const VerifyEmailPage = lazy(() =>
+  import("@/pages/auth/VerifyEmailPage").then((m) => ({ default: m.VerifyEmailPage })),
+);
+const CabinetPage = lazy(() =>
+  import("@/pages/CabinetPage").then((m) => ({ default: m.CabinetPage })),
+);
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -40,7 +53,15 @@ function AnimatedRoutes() {
         <Route path="/clinics/:id" element={<ClinicDetailPage />} />
         <Route path="/compare" element={<ComparePage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route element={<RequireAuth />}>
+          <Route path="/cabinet" element={<CabinetPage />} />
+        </Route>
+        <Route element={<RequireAdmin />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+        </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </div>
