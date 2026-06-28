@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Check,
@@ -13,9 +13,14 @@ import {
 } from "lucide-react";
 
 import { fetchClinic, fetchClinicServices } from "@/lib/api";
+import { type SearchContext, searchCrumb } from "@/lib/breadcrumb";
 import { capitalize, formatPrice, sourceLabel } from "@/lib/format";
+import { twoGisRouteUrl, twoGisSearchUrl } from "@/lib/twoGisRoute";
+import type { BranchInfo, ClinicDetail } from "@/types";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { RatingBadge } from "@/components/RatingBadge";
+import { ReviewsSection } from "@/components/reviews/ReviewsSection";
 import { AppShell } from "@/components/AppShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClinicCardSkeletonList } from "@/components/ClinicCardSkeleton";
@@ -24,12 +29,20 @@ import { Pager } from "@/components/Pager";
 
 const PAGE_SIZE = 10;
 
-function routeUrl(query: string): string {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+function branchRouteUrl(branch: BranchInfo, clinic: ClinicDetail): string {
+  if (branch.lat != null && branch.lng != null) {
+    return twoGisRouteUrl({
+      dest: { lat: branch.lat, lng: branch.lng },
+      city: branch.city,
+    });
+  }
+  const query = [branch.city, branch.address, clinic.name].filter(Boolean).join(", ");
+  return twoGisSearchUrl({ query, city: branch.city });
 }
 
 export function ClinicDetailPage() {
   const { id } = useParams();
+  const fromSearch = useLocation().state as SearchContext | null;
   const clinicId = Number(id);
   const valid = Number.isInteger(clinicId) && clinicId > 0;
   const [serviceQuery, setServiceQuery] = useState("");
@@ -67,10 +80,11 @@ export function ClinicDetailPage() {
       city={branch?.city ?? undefined}
       breadcrumb={[
         { label: "Поиск", href: "/" },
+        ...searchCrumb(fromSearch),
         { label: clinic?.name ?? "Клиника" },
       ]}
     >
-      <div className="mx-auto max-w-4xl px-4 py-6 lg:px-6">
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6">
         {clinicQuery.isLoading && <ClinicCardSkeletonList count={2} />}
         {clinicQuery.isError && (
           <p className="text-sm text-destructive">Клиника не найдена.</p>
@@ -82,11 +96,20 @@ export function ClinicDetailPage() {
               <div className="flex items-start gap-4">
                 <ClinicAvatar name={clinic.name} size="lg" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                     <div className="min-w-0">
-                      <h1 className="mb-1 text-2xl font-semibold text-foreground">
+                      <h1 className="mb-1 text-xl font-semibold text-foreground sm:text-2xl">
                         {clinic.name}
                       </h1>
+                      {clinic.rating != null && (
+                        <div className="mb-1.5">
+                          <RatingBadge
+                            rating={clinic.rating}
+                            reviewsCount={clinic.reviews_count}
+                            size="md"
+                          />
+                        </div>
+                      )}
                       {branch?.address && (
                         <div className="mb-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                           <MapPin className="h-3.5 w-3.5 shrink-0" />
@@ -106,7 +129,7 @@ export function ClinicDetailPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
+                    <div className="order-first flex flex-row items-center gap-2 sm:order-none sm:flex-col sm:items-end">
                       <StatusBadge variant="success">
                         <Check className="h-3 w-3" /> Верифицировано
                       </StatusBadge>
@@ -119,11 +142,7 @@ export function ClinicDetailPage() {
                   <div className="mt-5 flex flex-wrap gap-3">
                     {branch && (
                       <a
-                        href={routeUrl(
-                          [branch.city, branch.address, clinic.name]
-                            .filter(Boolean)
-                            .join(", "),
-                        )}
+                        href={branchRouteUrl(branch, clinic)}
                         target="_blank"
                         rel="noreferrer"
                         className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary"
@@ -147,18 +166,22 @@ export function ClinicDetailPage() {
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
-              <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-                <h2 className="font-semibold text-foreground">Все услуги клиники</h2>
-                <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
-                  {services.length}
-                </span>
-                <div className="ml-auto flex items-center gap-2 rounded-lg border border-border bg-input-background px-3 py-1.5">
-                  <Search className="h-3.5 w-3.5 text-faintest" />
+              <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-3">
+                  <h2 className="whitespace-nowrap font-semibold text-foreground">
+                    Все услуги клиники
+                  </h2>
+                  <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
+                    {services.length}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-input-background px-3 py-1.5 sm:ml-auto">
+                  <Search className="h-3.5 w-3.5 shrink-0 text-faintest" />
                   <input
                     value={serviceQuery}
                     onChange={(e) => setServiceQuery(e.target.value)}
                     placeholder="Поиск услуги…"
-                    className="w-28 bg-transparent text-sm text-foreground outline-none placeholder:text-faintest"
+                    className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-faintest sm:w-28"
                   />
                 </div>
               </div>
@@ -227,6 +250,12 @@ export function ClinicDetailPage() {
                 </div>
               )}
             </div>
+
+            <ReviewsSection
+              clinicId={clinic.id}
+              rating={clinic.rating}
+              reviewsCount={clinic.reviews_count}
+            />
           </>
         )}
       </div>

@@ -42,8 +42,11 @@ export function AnalyticsPage() {
   const stats = statsQuery.data ?? [];
 
   return (
-    <AppShell breadcrumb={[{ label: "Аналитика цен" }]} city={city || "Все города"}>
-      <div className="mx-auto max-w-4xl px-4 py-8">
+    <AppShell
+      breadcrumb={[{ label: "Поиск", href: "/" }, { label: "Аналитика цен" }]}
+      city={city || "Все города"}
+    >
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-8 lg:px-6">
       <header className="mb-6">
         <h1 className="text-xl font-semibold text-foreground">Аналитика цен</h1>
         <p className="text-sm text-muted-foreground">

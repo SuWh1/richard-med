@@ -5,6 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import type { MapPin } from "@/types";
+import type { Coords } from "@/lib/geo";
 import { MapPopupCard } from "./MapPopupCard";
 
 function clusterIcon(cluster: { getChildCount: () => number }): L.DivIcon {
@@ -20,10 +21,12 @@ function clusterIcon(cluster: { getChildCount: () => number }): L.DivIcon {
 
 interface ClinicMapProps {
   pins: MapPin[];
-  selectedClinicId: number | null;
-  onSelectClinic: (clinicId: number | null) => void;
+  selectedBranchId: number | null;
+  onSelectBranch: (branchId: number | null) => void;
   center: [number, number] | null;
   median: number | null;
+  userCoords?: Coords | null;
+  focusPoint?: [number, number] | null;
 }
 
 const KZ_CENTER: [number, number] = [48.0196, 66.9237];
@@ -47,12 +50,19 @@ function pinIcon(state: { cheapest: boolean; selected: boolean; stale: boolean }
 function FitBounds({
   points,
   center,
+  focusPoint,
 }: {
   points: [number, number][];
   center: [number, number] | null;
+  focusPoint?: [number, number] | null;
 }) {
   const map = useMap();
   useEffect(() => {
+    // Focus a single point (e.g. the first list item on mobile) instead of fitting all.
+    if (focusPoint) {
+      map.setView(focusPoint, 14);
+      return;
+    }
     if (points.length === 0) {
       if (center) map.setView(center, 12);
       return;
@@ -62,40 +72,42 @@ function FitBounds({
       return;
     }
     map.fitBounds(points, { padding: [48, 48] });
-  }, [map, points, center]);
+  }, [map, points, center, focusPoint]);
   return null;
 }
 
 function PanToSelected({
   pins,
-  selectedClinicId,
+  selectedBranchId,
   markers,
 }: {
   pins: MapPin[];
-  selectedClinicId: number | null;
+  selectedBranchId: number | null;
   markers: React.MutableRefObject<Map<number, L.Marker>>;
 }) {
   const map = useMap();
   useEffect(() => {
-    if (selectedClinicId == null) return;
-    const pin = pins.find((p) => p.clinic_id === selectedClinicId);
+    if (selectedBranchId == null) return;
+    const pin = pins.find((p) => p.branch_id === selectedBranchId);
     if (!pin) return;
-    // Zoom in (not just pan) so the highlighted clinic is clearly located, not a dot in a wide view.
+    // Zoom in (not just pan) so the highlighted point is clearly located, not a dot in a wide view.
     map.setView([pin.lat, pin.lng], Math.max(map.getZoom(), 15), {
       animate: true,
       duration: 0.4,
     });
     markers.current.get(pin.branch_id)?.openPopup();
-  }, [map, pins, selectedClinicId, markers]);
+  }, [map, pins, selectedBranchId, markers]);
   return null;
 }
 
 export function ClinicMap({
   pins,
-  selectedClinicId,
-  onSelectClinic,
+  selectedBranchId,
+  onSelectBranch,
   center,
   median,
+  userCoords,
+  focusPoint,
 }: ClinicMapProps) {
   const points = useMemo<[number, number][]>(
     () => pins.map((p) => [p.lat, p.lng]),
@@ -115,8 +127,8 @@ export function ClinicMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitBounds points={points} center={center} />
-      <PanToSelected pins={pins} selectedClinicId={selectedClinicId} markers={markers} />
+      <FitBounds points={points} center={center} focusPoint={focusPoint} />
+      <PanToSelected pins={pins} selectedBranchId={selectedBranchId} markers={markers} />
       <MarkerClusterGroup
         chunkedLoading
         maxClusterRadius={45}
@@ -133,13 +145,13 @@ export function ClinicMap({
             }}
             icon={pinIcon({
               cheapest: pin.is_cheapest,
-              selected: pin.clinic_id === selectedClinicId,
+              selected: pin.branch_id === selectedBranchId,
               stale: pin.freshness === "stale",
             })}
-            eventHandlers={{ click: () => onSelectClinic(pin.clinic_id) }}
+            eventHandlers={{ click: () => onSelectBranch(pin.branch_id) }}
           >
             <Popup autoPan={false}>
-              <MapPopupCard pin={pin} median={median} />
+              <MapPopupCard pin={pin} median={median} userCoords={userCoords} />
             </Popup>
           </Marker>
         ))}

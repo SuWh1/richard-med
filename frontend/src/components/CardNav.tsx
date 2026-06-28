@@ -15,6 +15,7 @@ export interface CardNavItem {
   bgColor: string;
   textColor: string;
   links: CardNavLink[];
+  dark?: boolean;
 }
 
 interface CardNavProps {
@@ -111,6 +112,12 @@ export function CardNav({
 
   const go = (href: string) => {
     toggleMenu();
+    if (href.startsWith("#")) {
+      document
+        .getElementById(href.slice(1))
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     navigate(href);
   };
 
@@ -168,13 +175,17 @@ export function CardNav({
               <div className="text-[17px] font-medium tracking-tight md:text-lg">
                 {item.label}
               </div>
-              <div className="mt-auto flex flex-col gap-1">
+              <div className="mt-auto flex flex-col gap-1.5">
                 {item.links.map((lnk, i) => (
                   <button
                     key={`${lnk.label}-${i}`}
                     type="button"
                     onClick={() => go(lnk.href)}
-                    className="inline-flex items-center gap-1.5 text-left text-[15px] transition-opacity duration-200 hover:opacity-75"
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-left text-[14px] font-medium transition-colors ${
+                      item.dark
+                        ? "bg-white/15 hover:bg-white/25"
+                        : "bg-white/70 shadow-sm hover:bg-white"
+                    }`}
                   >
                     <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden />
                     {lnk.label}

@@ -28,6 +28,9 @@ const card: PriceCardData = {
   content_hash: "abc",
   match_confidence: 0.94,
   match_method: "alias",
+  rating: 4.9,
+  reviews_count: 155,
+  branch_count: 1,
 };
 
 function renderCard(overrides: Partial<Parameters<typeof ClinicCard>[0]> = {}) {
@@ -82,5 +85,96 @@ describe("ClinicCard", () => {
     renderCard({ onPassport });
     await userEvent.click(screen.getByRole("button", { name: "Источник цены" }));
     expect(onPassport).toHaveBeenCalledOnce();
+  });
+
+  it("should render a freshness badge", () => {
+    renderCard();
+    expect(screen.getByText("Обновлено сегодня")).toBeInTheDocument();
+  });
+
+  it("should not render the service duration chip", () => {
+    renderCard();
+    expect(screen.queryByText(/дн\.$/)).not.toBeInTheDocument();
+  });
+
+  it("should render the 2GIS rating when present", () => {
+    renderCard();
+    expect(screen.getByLabelText(/Рейтинг 2ГИС 4\.9/)).toBeInTheDocument();
+    expect(screen.getByText(/155/)).toBeInTheDocument();
+  });
+
+  it("should not render a rating when the card has none", () => {
+    renderCard({ card: { ...card, rating: null, reviews_count: null } });
+    expect(screen.queryByLabelText(/Рейтинг 2ГИС/)).not.toBeInTheDocument();
+  });
+
+  it("should show a points-in-city badge for multi-branch clinics", () => {
+    renderCard({ card: { ...card, branch_count: 78 } });
+    expect(screen.getByText(/78 точек в городе/)).toBeInTheDocument();
+  });
+
+  it("should not show a points badge for a single-branch clinic", () => {
+    renderCard({ card: { ...card, branch_count: 1 } });
+    expect(screen.queryByText(/точ.* в городе/)).not.toBeInTheDocument();
+  });
+
+  it("should expand the points list and zoom on hover", async () => {
+    const onPointHover = vi.fn();
+    const points = [
+      { branchId: 11, address: "ул. Первая, 1", lat: 43.2, lng: 76.9, distanceKm: 0.5 },
+      { branchId: 12, address: "ул. Вторая, 2", lat: 43.3, lng: 76.95, distanceKm: 2.1 },
+    ];
+    renderCard({ card: { ...card, branch_count: 2 }, points, onPointHover });
+
+    await userEvent.click(screen.getByText(/2 точки в городе/));
+    const row = screen.getByText("ул. Вторая, 2");
+    await userEvent.hover(row);
+
+    expect(onPointHover).toHaveBeenCalledWith(12);
+  });
+
+  it("should not render a compare button when onCompare is absent", () => {
+    renderCard();
+    expect(screen.queryByText(/Сравнить|В сравнении/)).not.toBeInTheDocument();
+  });
+
+  it("should call onCompare when the compare button is clicked", async () => {
+    const onCompare = vi.fn();
+    renderCard({ onCompare });
+    await userEvent.click(screen.getByRole("button", { name: /Сравнить/ }));
+    expect(onCompare).toHaveBeenCalledOnce();
+  });
+
+  it("should show the selected label when inCompare is true", () => {
+    renderCard({ onCompare: () => {}, inCompare: true });
+    expect(screen.getByText("В сравнении")).toBeInTheDocument();
+  });
+
+  it("should build a 2GIS directions link from the card coordinates", () => {
+    renderCard();
+    const route = screen.getByRole("link", { name: /Маршрут/ });
+    expect(route).toHaveAttribute(
+      "href",
+      "https://2gis.kz/astana/directions/points/|71.4,51.1?m=71.4,51.1/16",
+    );
+  });
+
+  it("should include the user origin in the 2GIS route when known", () => {
+    renderCard({ userCoords: { lat: 51.2, lng: 71.5 } });
+    const route = screen.getByRole("link", { name: /Маршрут/ });
+    expect(route).toHaveAttribute(
+      "href",
+      "https://2gis.kz/astana/directions/points/71.5,51.2|71.4,51.1",
+    );
+  });
+
+  it("should render a distance chip when distanceKm is provided", () => {
+    renderCard({ distanceKm: 2.4 });
+    expect(screen.getByText("2.4 км")).toBeInTheDocument();
+  });
+
+  it("should not render a distance chip when distanceKm is null", () => {
+    renderCard({ distanceKm: null });
+    expect(screen.queryByText(/км$/)).not.toBeInTheDocument();
   });
 });

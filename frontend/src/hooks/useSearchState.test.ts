@@ -30,6 +30,10 @@ describe("parseSearchState", () => {
   it("should ignore an invalid sort value", () => {
     expect(parseSearchState(new URLSearchParams("sort=bogus")).sort).toBe("best_value");
   });
+
+  it("should accept the nearest sort value", () => {
+    expect(parseSearchState(new URLSearchParams("sort=nearest")).sort).toBe("nearest");
+  });
 });
 
 describe("buildSearchParams", () => {

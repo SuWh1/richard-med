@@ -3,18 +3,25 @@ import { ExternalLink, Navigation } from "lucide-react";
 import type { MapPin } from "@/types";
 import { formatPrice } from "@/lib/format";
 import { savingsVsMedian } from "@/lib/results";
+import type { Coords } from "@/lib/geo";
+import { twoGisRouteUrl } from "@/lib/twoGisRoute";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
 
 interface MapPopupCardProps {
   pin: MapPin;
   median: number | null;
+  userCoords?: Coords | null;
 }
 
-function routeUrl(pin: MapPin): string {
-  return `https://www.google.com/maps/dir/?api=1&destination=${pin.lat},${pin.lng}`;
+function routeUrl(pin: MapPin, userCoords?: Coords | null): string {
+  return twoGisRouteUrl({
+    dest: { lat: pin.lat, lng: pin.lng },
+    origin: userCoords,
+    city: pin.city,
+  });
 }
 
-export function MapPopupCard({ pin, median }: MapPopupCardProps) {
+export function MapPopupCard({ pin, median, userCoords }: MapPopupCardProps) {
   const savings = median != null ? savingsVsMedian(pin.price_kzt, median) : 0;
 
   return (
@@ -44,7 +51,7 @@ export function MapPopupCard({ pin, median }: MapPopupCardProps) {
 
       <div className="mt-3 flex gap-2">
         <a
-          href={routeUrl(pin)}
+          href={routeUrl(pin, userCoords)}
           target="_blank"
           rel="noreferrer"
           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium !text-muted-foreground transition-colors hover:bg-secondary"

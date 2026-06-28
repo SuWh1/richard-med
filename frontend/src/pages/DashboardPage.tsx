@@ -27,7 +27,7 @@ import {
 import { Kpis } from "@/components/Kpis";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { SourceHealthCard } from "@/components/SourceHealthCard";
-import { FreshnessBadge } from "@/components/FreshnessBadge";
+import { FreshBadge } from "@/components/FreshBadge";
 import { AnimatedList } from "@/components/AnimatedList";
 import { AppShell } from "@/components/AppShell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -135,10 +135,10 @@ export function DashboardPage() {
 
   return (
     <AppShell
-      breadcrumb={[{ label: "Кабинет" }, { label: "Source Health" }]}
+      breadcrumb={[{ label: "Кабинет", href: "/cabinet" }, { label: "Source Health" }]}
       city={city === ALL_CITIES ? "Все города" : city}
     >
-      <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-8 lg:px-6">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Source Health Dashboard</h1>
@@ -373,7 +373,7 @@ function PriceSampleRow({ sample }: { sample: ParsedPriceSample }) {
         <span className="text-xs text-slate-400" title="Уверенность сопоставления">
           {Math.round(sample.match_confidence * 100)}%
         </span>
-        <FreshnessBadge freshness={sample.freshness} ageDays={sample.age_days} />
+        <FreshBadge freshness={sample.freshness} ageDays={sample.age_days} />
         <span className="font-semibold text-slate-900">{formatPrice(sample.price_kzt)}</span>
       </div>
     </li>

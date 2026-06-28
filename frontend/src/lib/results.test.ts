@@ -53,6 +53,9 @@ function card(partial: Partial<PriceCard>): PriceCard {
     content_hash: null,
     match_confidence: 1,
     match_method: "exact",
+    rating: null,
+    reviews_count: null,
+    branch_count: 1,
     ...partial,
   };
 }

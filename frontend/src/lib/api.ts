@@ -5,6 +5,7 @@ import type {
   CatalogParams,
   CityInfo,
   ClinicDetail,
+  ClinicReview,
   ClinicServiceRow,
   CompareResult,
   MapPin,
@@ -15,6 +16,7 @@ import type {
   SearchParams,
   SearchResponse,
   ServicePriceStat,
+  SourcePublic,
   SourceHealth,
   Suggestion,
   UnmatchedPage,
@@ -73,6 +75,14 @@ export function fetchClinicServices(clinicId: number): Promise<ClinicServiceRow[
   return getJson<ClinicServiceRow[]>(`/clinics/${clinicId}/services`, {});
 }
 
+export function fetchClinicReviews(
+  clinicId: number,
+  limit = 20,
+  offset = 0,
+): Promise<ClinicReview[]> {
+  return getJson<ClinicReview[]>(`/clinics/${clinicId}/reviews`, { limit, offset });
+}
+
 export function fetchCompare(
   serviceId: number,
   clinicIds: number[],
@@ -83,6 +93,10 @@ export function fetchCompare(
     clinic_ids: clinicIds.join(","),
     city,
   });
+}
+
+export function fetchSources(): Promise<SourcePublic[]> {
+  return getJson<SourcePublic[]>("/sources", {});
 }
 
 export function fetchPriceStats(params: AnalyticsParams = {}): Promise<ServicePriceStat[]> {

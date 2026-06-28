@@ -14,7 +14,7 @@ export interface SearchState {
 
 export const DEFAULT_CITY = "Астана";
 const DEFAULT_SORT: SortKey = "best_value";
-const SORTS: SortKey[] = ["best_value", "cheapest", "newest"];
+const SORTS: SortKey[] = ["best_value", "cheapest", "newest", "nearest"];
 
 export function parseSearchState(params: URLSearchParams): SearchState {
   const sortParam = params.get("sort");

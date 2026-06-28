@@ -24,15 +24,16 @@ import {
 } from "@/components/ui/sidebar";
 
 const NAV = [
-  { title: "Поиск", url: "/", icon: Search },
+  { title: "Поиск", url: "/search", icon: Search },
   { title: "Аналитика", url: "/analytics", icon: BarChart3 },
   { title: "Кабинет", url: "/cabinet", icon: User },
 ];
 const ADMIN_NAV = [{ title: "Source Health", url: "/dashboard", icon: LayoutGrid }];
 
 function isActive(pathname: string, url: string): boolean {
-  if (url === "/") return pathname === "/" || pathname.startsWith("/search");
-  return pathname.startsWith(url);
+  const route = url.split("#")[0] || "/";
+  if (route === "/") return pathname === "/" || pathname.startsWith("/search");
+  return pathname.startsWith(route);
 }
 
 export function AppSidebar({ city = "Астана" }: { city?: string }) {

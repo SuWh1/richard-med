@@ -1,6 +1,6 @@
 export type Freshness = "fresh" | "recent" | "stale";
 
-export type SortKey = "best_value" | "cheapest" | "newest";
+export type SortKey = "best_value" | "cheapest" | "newest" | "nearest";
 
 export type City = "Астана" | "Алматы" | "Караганда" | "Актобе";
 
@@ -52,6 +52,9 @@ export interface PriceCard {
   content_hash: string | null;
   match_confidence: number;
   match_method: string | null;
+  rating: number | null;
+  reviews_count: number | null;
+  branch_count: number;
 }
 
 export interface SearchResponse {
@@ -87,6 +90,8 @@ export interface BranchInfo {
   lng: number | null;
   phone: string | null;
   working_hours: string | null;
+  rating: number | null;
+  reviews_count: number | null;
 }
 
 export interface ClinicDetail {
@@ -94,7 +99,21 @@ export interface ClinicDetail {
   name: string;
   website_url: string | null;
   source_name: string;
+  rating: number | null;
+  reviews_count: number;
   branches: BranchInfo[];
+}
+
+export interface ClinicReview {
+  id: number;
+  author: string | null;
+  rating: number | null;
+  text: string | null;
+  official_answer: string | null;
+  review_date: string | null;
+  source: string;
+  branch_id: number;
+  city: string | null;
 }
 
 export interface ClinicServiceRow {
@@ -124,6 +143,9 @@ export interface CompareRow {
   freshness: Freshness;
   source_url: string;
   is_cheapest: boolean;
+  price_delta: number;
+  delta_pct: number;
+  price_rank: number;
 }
 
 export interface CompareResult {
@@ -140,6 +162,8 @@ export interface SearchParams {
   include_stale?: boolean;
   price_min?: number;
   price_max?: number;
+  lat?: number;
+  lng?: number;
 }
 
 export type RunStatus = "running" | "success" | "partial" | "failed";
@@ -283,4 +307,17 @@ export interface UnmatchedParams {
   status?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface SourcePublic {
+  name: string;
+  display_name: string;
+  kind: string;
+  description: string;
+  website: string;
+  clinics: number;
+  prices: number;
+  cities: number;
+  last_parsed_at: string | null;
+  freshness: Freshness | null;
 }

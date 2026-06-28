@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { ChevronLeft } from "lucide-react";
 
 import {
   Breadcrumb,
@@ -36,6 +37,9 @@ function readSidebarOpen(): boolean {
 }
 
 export function AppShell({ breadcrumb, city, headerRight, children }: AppShellProps) {
+  const parent = [...breadcrumb].reverse().find((c) => c.href);
+  const current = breadcrumb[breadcrumb.length - 1];
+
   return (
     <SidebarProvider defaultOpen={readSidebarOpen()} className="h-svh overflow-hidden">
       <AppSidebar city={city} />
@@ -43,13 +47,30 @@ export function AppShell({ breadcrumb, city, headerRight, children }: AppShellPr
         <header className="z-30 flex h-14 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
-          <Breadcrumb>
+
+          {/* Mobile: one-tap back to the nearest clickable step */}
+          {parent ? (
+            <Link
+              to={parent.href!}
+              className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground md:hidden"
+            >
+              <ChevronLeft className="h-4 w-4 shrink-0" />
+              <span className="truncate">{parent.label}</span>
+            </Link>
+          ) : (
+            <span className="truncate text-sm font-medium text-foreground md:hidden">
+              {current?.label}
+            </span>
+          )}
+
+          {/* Desktop: full clickable trail */}
+          <Breadcrumb className="hidden md:block">
             <BreadcrumbList>
               {breadcrumb.map((crumb, i) => {
                 const last = i === breadcrumb.length - 1;
                 return (
                   <Fragment key={`${crumb.label}-${i}`}>
-                    <BreadcrumbItem className={last ? "" : "hidden md:block"}>
+                    <BreadcrumbItem>
                       {last || !crumb.href ? (
                         <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
                       ) : (
@@ -58,7 +79,7 @@ export function AppShell({ breadcrumb, city, headerRight, children }: AppShellPr
                         </BreadcrumbLink>
                       )}
                     </BreadcrumbItem>
-                    {!last && <BreadcrumbSeparator className="hidden md:block" />}
+                    {!last && <BreadcrumbSeparator />}
                   </Fragment>
                 );
               })}

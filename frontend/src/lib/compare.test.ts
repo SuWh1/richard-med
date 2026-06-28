@@ -8,6 +8,15 @@ describe("buildCompareHref", () => {
       "/compare?service_id=10&clinic_ids=1%2C2%2C3",
     );
   });
+
+  it("should include the city when provided", () => {
+    const url = new URL(`http://x${buildCompareHref(10, [1, 2], "Астана")}`);
+    expect(url.searchParams.get("city")).toBe("Астана");
+  });
+
+  it("should omit the city when not provided", () => {
+    expect(buildCompareHref(10, [1, 2])).not.toContain("city=");
+  });
 });
 
 describe("parseClinicIds", () => {

@@ -16,6 +16,7 @@ import {
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "best_value", label: "Оптимальные" },
   { key: "cheapest", label: "Дешёвые" },
+  { key: "nearest", label: "Ближайшие" },
 ];
 
 interface FilterControlsProps {
@@ -37,7 +38,7 @@ export function FilterControls({ state, cities, onPatch }: FilterControlsProps) 
     <div className="space-y-5">
       <div className="space-y-2">
         <Label>Сортировка</Label>
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+        <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
           {SORTS.map((opt) => (
             <button
               key={opt.key}

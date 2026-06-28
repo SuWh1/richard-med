@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Map as MapIcon } from "lucide-react";
+import { Map as MapIcon, Search as SearchIcon } from "lucide-react";
 
 import type { PriceCard as PriceCardData, Suggestion } from "@/types";
 import { fetchCities, fetchMapPins, fetchSearch, fetchSuggestions } from "@/lib/api";
+import { clinicPoints } from "@/lib/clinicPoints";
 import {
   DEFAULT_CITY,
   type SearchState,
   useSearchState,
 } from "@/hooks/useSearchState";
 import { dedupePinsByLocation, medianPrice } from "@/lib/results";
+import { distanceKm, nearestCity, sortByNearest } from "@/lib/geo";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useUserLocation } from "@/hooks/useUserLocation";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AppShell } from "@/components/AppShell";
 import { SearchBar } from "@/components/SearchBar";
@@ -22,7 +26,10 @@ import { ClinicCardSkeletonList } from "@/components/ClinicCardSkeleton";
 import { ClinicCard } from "@/components/ClinicCard";
 import { AnimatedList } from "@/components/AnimatedList";
 import { PricePassport } from "@/components/PricePassport";
+import { CompareTray } from "@/components/CompareTray";
 import { ClinicMap } from "@/components/map/ClinicMap";
+import { useCompareSelection } from "@/hooks/useCompareSelection";
+import { buildCompareHref } from "@/lib/compare";
 
 function toNum(value: string): number | undefined {
   if (!value) return undefined;
@@ -33,9 +40,12 @@ function toNum(value: string): number | undefined {
 export function ResultsPage() {
   const { state, update } = useSearchState();
   const navigate = useNavigate();
+  const [rawParams] = useSearchParams();
+  const { coords, request: requestLocation } = useUserLocation();
+  const appliedGeoCity = useRef(false);
 
   const [input, setInput] = useState(state.q);
-  const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
   const [passport, setPassport] = useState<PriceCardData | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
 
@@ -46,9 +56,6 @@ export function ResultsPage() {
   useEffect(() => setInput(state.q), [state.q]);
 
   const isSearching = state.q.trim().length >= 2;
-  useEffect(() => {
-    if (!isSearching) navigate("/", { replace: true });
-  }, [isSearching, navigate]);
 
   const citiesQuery = useQuery({ queryKey: ["cities"], queryFn: fetchCities });
   const cities = citiesQuery.data ?? [];
@@ -58,35 +65,58 @@ export function ResultsPage() {
     return found ? [found.lat, found.lng] : null;
   }, [cities, state.city]);
 
+  useEffect(() => {
+    if (appliedGeoCity.current || !coords || cities.length === 0) return;
+    appliedGeoCity.current = true;
+    if (rawParams.get("city")) return;
+    const near = nearestCity(coords, cities);
+    if (near && near.name !== state.city) update({ city: near.name }, { replace: true });
+  }, [coords, cities, rawParams, state.city, update]);
+
   const suggestionsQuery = useQuery({
     queryKey: ["suggestions", debounced],
     queryFn: () => fetchSuggestions(debounced),
     enabled: debounced.trim().length >= 2,
   });
 
+  // "nearest" is sorted client-side from coords; the backend only knows best_value/cheapest/newest.
+  const backendSort = state.sort === "nearest" ? "best_value" : state.sort;
+  // Round coords (~100m) so the clinic card binds to the user's nearest branch
+  // without refetching on every GPS jitter.
+  const geo = coords
+    ? { lat: Math.round(coords.lat * 1000) / 1000, lng: Math.round(coords.lng * 1000) / 1000 }
+    : null;
+
   const searchQuery = useQuery({
     queryKey: [
       "search",
       state.q,
       state.city,
-      state.sort,
+      backendSort,
       state.includeStale,
       state.priceMin,
       state.priceMax,
+      geo?.lat ?? null,
+      geo?.lng ?? null,
     ],
     queryFn: () =>
       fetchSearch({
         q: state.q,
         city: state.city,
-        sort: state.sort,
+        sort: backendSort,
         include_stale: state.includeStale,
         price_min: toNum(state.priceMin),
         price_max: toNum(state.priceMax),
+        lat: geo?.lat,
+        lng: geo?.lng,
       }),
     enabled: isSearching,
   });
 
-  const cards = searchQuery.data?.cards ?? [];
+  const cards = useMemo(() => {
+    const base = searchQuery.data?.cards ?? [];
+    return state.sort === "nearest" && coords ? sortByNearest(base, coords) : base;
+  }, [searchQuery.data, state.sort, coords]);
   const median = useMemo(() => medianPrice(cards.map((c) => c.price_kzt)), [cards]);
   const cheapestPrice = useMemo(
     () => (cards.length ? Math.min(...cards.map((c) => c.price_kzt)) : null),
@@ -95,6 +125,22 @@ export function ResultsPage() {
   const resolved = searchQuery.data?.resolved_service ?? null;
   const resolvedId = resolved?.id ?? null;
 
+  const compare = useCompareSelection(resolvedId);
+  const compareClinics = useMemo(() => {
+    const byId = new Map(cards.map((c) => [c.clinic_id, c]));
+    return compare.selected
+      .map((id) => byId.get(id))
+      .filter((c): c is PriceCardData => c != null)
+      .map((c) => ({ clinic_id: c.clinic_id, clinic_name: c.clinic_name }));
+  }, [cards, compare.selected]);
+
+  const openCompare = () => {
+    if (resolvedId == null || compare.selected.length < 2) return;
+    navigate(buildCompareHref(resolvedId, compare.selected, state.city), {
+      state: { q: state.q, city: state.city, label: resolved?.name_ru },
+    });
+  };
+
   const mapQuery = useQuery({
     queryKey: ["map-pins", resolvedId, state.city],
     queryFn: () => fetchMapPins(resolvedId as number, state.city),
@@ -102,6 +148,13 @@ export function ResultsPage() {
   });
   const pins = useMemo(() => dedupePinsByLocation(mapQuery.data ?? []), [mapQuery.data]);
   const hasMap = pins.length > 0;
+
+  // A card binds to its clinic's nearest branch, but a map pin can be any branch — so
+  // resolve the selected branch back to its clinic to highlight/scroll the right card.
+  const selectedClinicId = useMemo(
+    () => pins.find((p) => p.branch_id === selectedBranchId)?.clinic_id ?? null,
+    [pins, selectedBranchId],
+  );
 
   useEffect(() => {
     if (!scrollOnSelect.current || selectedClinicId == null) return;
@@ -113,21 +166,22 @@ export function ResultsPage() {
 
   const runSearch = (q: string) => {
     if (q.trim().length < 2) return;
-    setSelectedClinicId(null);
+    setSelectedBranchId(null);
     update({ q: q.trim(), priceMin: "", priceMax: "" }, { replace: false });
   };
   const pickSuggestion = (s: Suggestion) => runSearch(s.name_ru);
 
   const patch = (p: Partial<SearchState>) => {
-    setSelectedClinicId(null);
+    setSelectedBranchId(null);
+    if (p.sort === "nearest" && !coords) requestLocation();
     update(p, { replace: true });
   };
   const resetFilters = () =>
     patch({ city: DEFAULT_CITY, priceMin: "", priceMax: "", includeStale: false });
 
-  const selectFromMap = (clinicId: number | null) => {
+  const selectFromMap = (branchId: number | null) => {
     scrollOnSelect.current = true;
-    setSelectedClinicId(clinicId);
+    setSelectedBranchId(branchId);
   };
 
   const searchBar = (
@@ -141,14 +195,21 @@ export function ResultsPage() {
     />
   );
 
+  const firstCardPoint = useMemo<[number, number] | null>(() => {
+    const first = cards.find((c) => c.lat != null && c.lng != null);
+    return first ? [first.lat as number, first.lng as number] : null;
+  }, [cards]);
+
   const mapEl = (overlay: boolean) => (
     <div className="relative h-full">
       <ClinicMap
         pins={pins}
-        selectedClinicId={selectedClinicId}
-        onSelectClinic={overlay ? setSelectedClinicId : selectFromMap}
+        selectedBranchId={selectedBranchId}
+        onSelectBranch={overlay ? setSelectedBranchId : selectFromMap}
         center={cityCenter}
         median={median}
+        userCoords={coords}
+        focusPoint={overlay ? firstCardPoint : null}
       />
     </div>
   );
@@ -157,7 +218,7 @@ export function ResultsPage() {
     <AppShell
       city={state.city}
       breadcrumb={[
-        { label: "Поиск" },
+        { label: "Поиск", href: "/search" },
         { label: resolved?.name_ru ?? "Результаты" },
       ]}
     >
@@ -173,14 +234,32 @@ export function ResultsPage() {
       <div className="mx-auto flex w-full max-w-[1400px] flex-1">
         <div
           ref={listRef}
-          className={`w-full p-4 lg:p-5 ${hasMap ? "lg:w-[58%]" : ""}`}
+          className={cn(
+            "w-full p-4 lg:p-5",
+            hasMap && "lg:w-[58%]",
+            compareClinics.length > 0 && "pb-24",
+          )}
         >
+          {!isSearching && (
+            <div className="flex min-h-[55vh] flex-col items-center justify-center px-4 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary">
+                <SearchIcon className="h-6 w-6 text-faintest" />
+              </div>
+              <div className="mb-1 text-lg font-semibold text-foreground">
+                Найдите медицинскую услугу
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Введите название услуги в поиске сверху
+              </div>
+            </div>
+          )}
+
           {searchQuery.isLoading && <ClinicCardSkeletonList count={5} />}
 
           {searchQuery.isError && (
             <div className="rounded-xl border border-danger/30 bg-card p-6 text-center shadow-sm">
               <p className="mb-2 text-sm font-semibold text-foreground">
-                Не удалось загрузить цены
+                Не удалось загрузить клиники
               </p>
               <Button variant="link" onClick={() => searchQuery.refetch()}>
                 Повторить
@@ -198,15 +277,32 @@ export function ResultsPage() {
 
           <AnimatedList className="space-y-3">
             {cards.map((card) => (
-              <div key={card.price_id} data-clinic-id={card.clinic_id}>
+              <div
+                key={`${card.price_id}-${card.branch_id ?? "c"}`}
+                data-clinic-id={card.clinic_id}
+              >
                 <ClinicCard
                   card={card}
                   isCheapest={card.price_kzt === cheapestPrice}
                   median={median}
                   isHighlighted={selectedClinicId === card.clinic_id}
-                  onHover={() => setSelectedClinicId(card.clinic_id)}
+                  userCoords={coords}
+                  distanceKm={coords ? distanceKm(coords, card) : null}
+                  points={clinicPoints(pins, card.clinic_id, coords)}
+                  onPointHover={(branchId) => setSelectedBranchId(branchId)}
+                  onHover={() => setSelectedBranchId(card.branch_id)}
                   onPassport={() => setPassport(card)}
-                  onDetail={() => navigate(`/clinics/${card.clinic_id}`)}
+                  onDetail={() =>
+                    navigate(`/clinics/${card.clinic_id}`, {
+                      state: { q: state.q, city: state.city, label: resolved?.name_ru },
+                    })
+                  }
+                  inCompare={compare.isSelected(card.clinic_id)}
+                  onCompare={
+                    compare.isSelected(card.clinic_id) || !compare.isFull
+                      ? () => compare.toggle(card.clinic_id)
+                      : undefined
+                  }
                 />
               </div>
             ))}
@@ -226,7 +322,10 @@ export function ResultsPage() {
       {hasMap && (
         <Button
           onClick={() => setMapOpen(true)}
-          className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2 gap-2 rounded-full shadow-lg lg:hidden"
+          className={cn(
+            "fixed left-1/2 z-40 -translate-x-1/2 gap-2 rounded-full shadow-lg lg:hidden",
+            compareClinics.length > 0 ? "bottom-24" : "bottom-5",
+          )}
         >
           <MapIcon className="h-4 w-4" /> Карта · {pins.length}
         </Button>
@@ -242,6 +341,13 @@ export function ResultsPage() {
       </Sheet>
 
       <PricePassport card={passport} onClose={() => setPassport(null)} />
+
+      <CompareTray
+        clinics={compareClinics}
+        onRemove={compare.toggle}
+        onClear={compare.clear}
+        onCompare={openCompare}
+      />
     </AppShell>
   );
 }

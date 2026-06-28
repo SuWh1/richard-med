@@ -1,12 +1,32 @@
 import { type MouseEvent } from "react";
-import { Info, Navigation, Star } from "lucide-react";
+import {
+  Building2,
+  Check,
+  ChevronDown,
+  Info,
+  MapPin,
+  Navigation,
+  Scale,
+  Star,
+} from "lucide-react";
 
 import type { PriceCard as PriceCardData } from "@/types";
 import { formatPrice } from "@/lib/format";
+import { pointWord } from "@/lib/rating";
 import { discountPct } from "@/lib/results";
+import { type Coords, formatDistance } from "@/lib/geo";
+import type { ClinicPoint } from "@/lib/clinicPoints";
+import { twoGisRouteUrl, twoGisSearchUrl } from "@/lib/twoGisRoute";
 import { cn } from "@/components/ui/utils";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { ClinicAvatar } from "./ClinicAvatar";
 import { StatusBadge } from "./StatusBadge";
+import { FreshBadge } from "./FreshBadge";
+import { RatingBadge } from "./RatingBadge";
 
 interface ClinicCardProps {
   card: PriceCardData;
@@ -16,20 +36,24 @@ interface ClinicCardProps {
   onHover: (priceId: number | null) => void;
   onPassport: () => void;
   onDetail?: () => void;
+  inCompare?: boolean;
+  onCompare?: () => void;
+  userCoords?: Coords | null;
+  distanceKm?: number | null;
+  points?: ClinicPoint[];
+  onPointHover?: (branchId: number) => void;
 }
 
-function durationLabel(min: number | null, max: number | null): string | null {
-  if (min == null && max == null) return null;
-  if (min != null && max != null && min !== max) return `${min}–${max} дн.`;
-  return `${max ?? min} дн.`;
-}
-
-function routeUrl(card: PriceCardData): string {
+function routeUrl(card: PriceCardData, userCoords?: Coords | null): string {
   if (card.lat != null && card.lng != null) {
-    return `https://www.google.com/maps/dir/?api=1&destination=${card.lat},${card.lng}`;
+    return twoGisRouteUrl({
+      dest: { lat: card.lat, lng: card.lng },
+      origin: userCoords,
+      city: card.city,
+    });
   }
-  const q = encodeURIComponent([card.city, card.address].filter(Boolean).join(", "));
-  return `https://www.google.com/maps/search/?api=1&query=${q}`;
+  const query = [card.city, card.address, card.clinic_name].filter(Boolean).join(", ");
+  return twoGisSearchUrl({ query, city: card.city });
 }
 
 export function ClinicCard({
@@ -40,8 +64,15 @@ export function ClinicCard({
   onHover,
   onPassport,
   onDetail,
+  inCompare = false,
+  onCompare,
+  userCoords,
+  distanceKm,
+  points,
+  onPointHover,
 }: ClinicCardProps) {
-  const duration = durationLabel(card.duration_min, card.duration_max);
+  const distance = formatDistance(distanceKm ?? null);
+  const multiPoint = (points?.length ?? 0) > 1;
   const belowMedianPct = median != null ? discountPct(card.price_kzt, median) : 0;
   const stop = (e: MouseEvent) => e.stopPropagation();
 
@@ -114,9 +145,21 @@ export function ClinicCard({
             </div>
           )}
 
-          {duration && (
-            <div className="mb-3 text-[11px] text-muted-foreground">{duration}</div>
-          )}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <FreshBadge freshness={card.freshness} ageDays={card.age_days} />
+            <RatingBadge rating={card.rating} reviewsCount={card.reviews_count} />
+            {distance && (
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <MapPin className="h-3 w-3" /> {distance}
+              </span>
+            )}
+            {!multiPoint && card.branch_count > 1 && (
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Building2 className="h-3 w-3" /> {card.branch_count}{" "}
+                {pointWord(card.branch_count)} в городе
+              </span>
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -130,7 +173,7 @@ export function ClinicCard({
               Источник цены
             </button>
             <a
-              href={routeUrl(card)}
+              href={routeUrl(card, userCoords)}
               target="_blank"
               rel="noreferrer"
               onClick={stop}
@@ -138,12 +181,76 @@ export function ClinicCard({
             >
               <Navigation className="h-3 w-3" /> Маршрут
             </a>
+            {onCompare && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  stop(e);
+                  onCompare();
+                }}
+                aria-pressed={inCompare}
+                className={cn(
+                  "flex min-h-[32px] items-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] transition-all",
+                  inCompare
+                    ? "border-primary bg-accent/50 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/30 hover:bg-secondary",
+                )}
+              >
+                {inCompare ? (
+                  <>
+                    <Check className="h-3 w-3" /> В сравнении
+                  </>
+                ) : (
+                  <>
+                    <Scale className="h-3 w-3" /> Сравнить
+                  </>
+                )}
+              </button>
+            )}
             {onDetail && (
               <span className="ml-auto text-[11px] font-medium text-muted-foreground">
                 Подробнее →
               </span>
             )}
           </div>
+
+          {multiPoint && points && (
+            <Collapsible className="mt-3 border-t border-secondary pt-3">
+              <CollapsibleTrigger
+                onClick={stop}
+                className="group flex w-full items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                {points.length} {pointWord(points.length)} в городе
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-2 max-h-52 space-y-1 overflow-y-auto pr-1">
+                  {points.map((pt) => (
+                    <div
+                      key={pt.branchId}
+                      onMouseEnter={() => onPointHover?.(pt.branchId)}
+                      onClick={(e) => {
+                        stop(e);
+                        onPointHover?.(pt.branchId);
+                      }}
+                      className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-1.5 text-[11px] transition-all hover:border-primary/40 hover:bg-secondary"
+                    >
+                      <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
+                        <MapPin className="h-3 w-3 shrink-0 text-faintest" />
+                        <span className="truncate">{pt.address ?? "—"}</span>
+                      </span>
+                      {pt.distanceKm != null && (
+                        <span className="shrink-0 text-faintest">
+                          {formatDistance(pt.distanceKm)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
         </div>
       </div>
     </div>

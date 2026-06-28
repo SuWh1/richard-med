@@ -34,6 +34,15 @@ export function formatDateTime(iso: string | null): string {
   });
 }
 
+export function formatReviewDate(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export function formatDuration(sec: number | null): string {
   if (sec === null) return "–";
   if (sec < 60) return `${sec.toFixed(1)} с`;
