@@ -103,10 +103,10 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
             <SidebarMenuItem>
               <div className="mt-1 flex items-center gap-2 rounded-md border border-sidebar-border px-2 py-1.5">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold uppercase text-primary">
-                  {(user?.email ?? "?").charAt(0)}
+                  {(user?.name || user?.email || "?").charAt(0)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                  {user?.email}
+                  {user?.name || user?.email}
                 </span>
                 <button
                   type="button"
