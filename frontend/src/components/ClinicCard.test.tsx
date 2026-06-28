@@ -25,6 +25,7 @@ const card: PriceCardData = {
   freshness: "fresh",
   source_url: "https://kdlolymp.kz/pricelist/astana",
   service_name_raw: "ОАК без СОЭ",
+  source_category: "Гематология",
   content_hash: "abc",
   match_confidence: 0.94,
   match_method: "alias",

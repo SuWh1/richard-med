@@ -53,6 +53,7 @@ const card = {
   price_id: 1,
   service_id: 10,
   service_name: "Общий анализ крови",
+  source_category: null,
   clinic_id: 5,
   clinic_name: "KDL Olymp",
   doctor_name: null,

@@ -366,6 +366,7 @@ def test_should_carry_branch_rating_onto_search_card():
         id=1, price_kzt=1880, duration_min=None, duration_max=None,
         parsed_at=datetime.now(UTC), source_url="https://x.kz", service_name_raw=None,
         content_hash=None, match_confidence=1.0, match_method="exact", city="Астана",
+        source_category=None,
     )
     clinic = SimpleNamespace(id=2, name="Клиника")
     branch = SimpleNamespace(
@@ -387,6 +388,7 @@ def test_should_leave_card_rating_none_without_branch():
         id=1, price_kzt=1880, duration_min=None, duration_max=None,
         parsed_at=datetime.now(UTC), source_url="https://x.kz", service_name_raw=None,
         content_hash=None, match_confidence=1.0, match_method="exact", city="Астана",
+        source_category=None,
     )
     clinic = SimpleNamespace(id=2, name="Клиника")
     service = SimpleNamespace(id=4, name_ru="ОАК")
@@ -395,3 +397,43 @@ def test_should_leave_card_rating_none_without_branch():
 
     assert card.rating is None
     assert card.reviews_count is None
+
+
+def test_should_fall_back_to_priced_relative_when_exact_match_has_no_prices(db_session):
+    # Plain query exact-matches a catalog row with no prices; the real prices live on a
+    # longer relative whose name contains the query (e.g. ЭКГ → Холтер ЭКГ). Resolve to
+    # the priced relative instead of dead-ending on the empty exact match.
+    bare = Service(
+        service_key="t-bare-zzzэкг",
+        name_ru="Зззэкг",
+        category=ServiceCategory.diagnostic,
+    )
+    priced = Service(
+        service_key="t-priced-zzzэкг",
+        name_ru="Суточное мониторирование Зззэкг (по Зззхолтеру)",
+        category=ServiceCategory.diagnostic,
+    )
+    db_session.add_all([bare, priced])
+    db_session.flush()
+
+    clinic = Clinic(name="Зззклиника эхо", source_name="zzz-test")
+    db_session.add(clinic)
+    db_session.flush()
+    db_session.add(
+        ClinicServicePrice(
+            clinic_id=clinic.id,
+            service_id=priced.id,
+            city="Астана",
+            price_kzt=5000,
+            source_url="https://example.test/holter",
+            parsed_at=datetime.now(UTC),
+            is_active=True,
+        )
+    )
+    db_session.flush()
+
+    resolved, _ = search.resolve_query(db_session, "Зззэкг")
+
+    assert resolved is not None
+    assert resolved.id == priced.id
+    assert resolved.has_prices

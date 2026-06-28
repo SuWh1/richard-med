@@ -1,7 +1,9 @@
 import { type MouseEvent } from "react";
+import { Link } from "react-router-dom";
 import {
   Bookmark,
   BookmarkCheck,
+  Briefcase,
   Building2,
   Check,
   ChevronDown,
@@ -30,6 +32,15 @@ import { ClinicAvatar } from "./ClinicAvatar";
 import { StatusBadge } from "./StatusBadge";
 import { FreshBadge } from "./FreshBadge";
 import { RatingBadge } from "./RatingBadge";
+
+function experienceLabel(years: number): string {
+  const mod10 = years % 10;
+  const mod100 = years % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${years} год опыта`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20))
+    return `${years} года опыта`;
+  return `${years} лет опыта`;
+}
 
 interface ClinicCardProps {
   card: PriceCardData;
@@ -143,7 +154,7 @@ export function ClinicCard({
             </div>
           </div>
 
-          <div className="mb-2 mt-2 flex items-center gap-1.5">
+          <div className="mb-2 mt-2 flex flex-wrap items-center gap-1.5">
             <span className="text-xs text-muted-foreground">{card.service_name}</span>
             {card.service_name_raw && card.service_name_raw !== card.service_name && (
               <span
@@ -153,12 +164,18 @@ export function ClinicCard({
                 <Info className="h-3.5 w-3.5" />
               </span>
             )}
+            {card.source_category && (
+              <span
+                title="Раздел каталога источника"
+                className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+              >
+                {card.source_category}
+              </span>
+            )}
           </div>
 
           {card.doctor_name && (
-            <div className="mb-2 text-[11px] text-muted-foreground">
-              Врач: {card.doctor_name}
-            </div>
+            <DoctorRow card={card} onStop={stop} />
           )}
 
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -178,6 +195,15 @@ export function ClinicCard({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {card.doctor_id != null && (
+              <Link
+                to={`/doctors/${card.doctor_id}`}
+                onClick={stop}
+                className="min-h-[32px] rounded-lg border border-border px-3 py-1.5 text-[11px] text-muted-foreground transition-all hover:border-primary/30 hover:bg-secondary"
+              >
+                О враче
+              </Link>
+            )}
             <button
               type="button"
               onClick={(e) => {
@@ -297,6 +323,74 @@ export function ClinicCard({
             </Collapsible>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DoctorRow({
+  card,
+  onStop,
+}: {
+  card: PriceCardData;
+  onStop: (e: MouseEvent) => void;
+}) {
+  const name = (
+    <span className="truncate text-xs font-medium text-foreground">
+      {card.doctor_name}
+    </span>
+  );
+  return (
+    <div className="mb-2 mt-2 flex items-center gap-2.5 rounded-lg bg-secondary/40 p-2">
+      {card.doctor_avatar ? (
+        <img
+          src={card.doctor_avatar}
+          alt={card.doctor_name ?? ""}
+          loading="lazy"
+          className="h-9 w-9 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+          {card.doctor_name?.[0] ?? "?"}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        {card.doctor_id != null ? (
+          <Link
+            to={`/doctors/${card.doctor_id}`}
+            onClick={onStop}
+            className="block min-w-0 hover:underline"
+          >
+            {name}
+          </Link>
+        ) : (
+          name
+        )}
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+          {card.doctor_rating != null && (
+            <span className="flex items-center gap-0.5 font-medium text-foreground">
+              <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+              {card.doctor_rating.toFixed(1)}
+              {card.doctor_reviews ? (
+                <span className="font-normal text-muted-foreground">
+                  {" "}
+                  · {card.doctor_reviews} отз.
+                </span>
+              ) : null}
+            </span>
+          )}
+          {card.doctor_experience != null && (
+            <span className="flex items-center gap-0.5">
+              <Briefcase className="h-3 w-3" />
+              {experienceLabel(card.doctor_experience)}
+            </span>
+          )}
+        </div>
+        {card.qualification && (
+          <div className="truncate text-[11px] text-muted-foreground">
+            {card.qualification}
+          </div>
+        )}
       </div>
     </div>
   );

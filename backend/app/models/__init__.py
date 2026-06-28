@@ -2,6 +2,7 @@ from app.models.auth import User
 from app.models.cabinet import UserSavedService, UserSearchHistory
 from app.models.catalog import Service, ServiceAlias, ServiceCategory
 from app.models.clinics import Clinic, ClinicBranch, ClinicReview
+from app.models.doctors import Doctor, DoctorDetail, DoctorReview
 from app.models.insights import CompareInsightCache
 from app.models.prices import (
     ClinicServicePrice,
@@ -21,6 +22,9 @@ __all__ = [
     "Clinic",
     "ClinicBranch",
     "ClinicReview",
+    "Doctor",
+    "DoctorDetail",
+    "DoctorReview",
     "ClinicServicePrice",
     "PriceHistory",
     "RawDocument",

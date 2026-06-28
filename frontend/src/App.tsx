@@ -20,6 +20,9 @@ const ClinicDirectoryPage = lazy(() =>
 const ClinicDetailPage = lazy(() =>
   import("@/pages/ClinicDetailPage").then((m) => ({ default: m.ClinicDetailPage })),
 );
+const DoctorPage = lazy(() =>
+  import("@/pages/DoctorPage").then((m) => ({ default: m.DoctorPage })),
+);
 const ComparePage = lazy(() =>
   import("@/pages/ComparePage").then((m) => ({ default: m.ComparePage })),
 );
@@ -54,6 +57,7 @@ function AnimatedRoutes() {
         <Route path="/search" element={<ResultsPage />} />
         <Route path="/clinics" element={<ClinicDirectoryPage />} />
         <Route path="/clinics/:id" element={<ClinicDetailPage />} />
+        <Route path="/doctors/:id" element={<DoctorPage />} />
         <Route path="/compare" element={<ComparePage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/login" element={<LoginPage />} />

@@ -13,6 +13,8 @@ import type {
   ClinicServicesParams,
   CompareInsight,
   CompareResult,
+  DoctorProfile,
+  DoctorReviewPage,
   MapPin,
   ParseRunDetail,
   ParseRunSummary,
@@ -167,6 +169,18 @@ export function fetchClinicReviews(
   offset = 0,
 ): Promise<ClinicReview[]> {
   return getJson<ClinicReview[]>(`/clinics/${clinicId}/reviews`, { limit, offset });
+}
+
+export function fetchDoctor(doctorId: number): Promise<DoctorProfile> {
+  return getJson<DoctorProfile>(`/doctors/${doctorId}`, {});
+}
+
+export function fetchDoctorReviews(
+  doctorId: number,
+  limit = 20,
+  offset = 0,
+): Promise<DoctorReviewPage> {
+  return getJson<DoctorReviewPage>(`/doctors/${doctorId}/reviews`, { limit, offset });
 }
 
 export function fetchCompare(

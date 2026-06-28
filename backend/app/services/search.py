@@ -15,7 +15,7 @@ from app.models import (
     ServiceCategory,
 )
 from app.services.embeddings import get_embedder
-from app.services.normalization import ServiceMatcher
+from app.services.normalization import ServiceMatcher, canonical_clean
 
 FRESH_DAYS = 7
 STALE_DAYS = 30
@@ -66,6 +66,16 @@ class PriceCard:
     rating: float | None
     reviews_count: int | None
     branch_count: int
+    doctor_id: int | None = None
+    doctor_avatar: str | None = None
+    doctor_experience: int | None = None
+    doctor_rating: float | None = None
+    doctor_reviews: int | None = None
+    qualification: str | None = None
+    district: str | None = None
+    base_price_kzt: int | None = None
+    discount_percent: int | None = None
+    source_category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -266,6 +276,25 @@ def _canonical_service_id(session: Session, service_id: int) -> int:
     return rows[0][0] if rows else service_id
 
 
+def _priced_fallback(q: str, suggestions: list[Suggestion]) -> Suggestion | None:
+    """Best priced suggestion whose name contains every token of the query.
+
+    When the lexical match lands on a catalog row that carries no prices (e.g. a bare
+    "ЭКГ" entry that nothing was scraped against), the real prices often live on a
+    longer relative — "Суточное мониторирование ЭКГ (по Холтеру)". Resolving to that
+    priced relative beats a dead-end empty page. The whole-token requirement keeps it
+    honest (§9): the user's full concept must appear as words in the candidate name, so
+    we never drift to a loosely-fuzzy service.
+    """
+    q_tokens = set(canonical_clean(q).split())
+    if not q_tokens:
+        return None
+    for s in suggestions:
+        if s.has_prices and q_tokens <= set(canonical_clean(s.name_ru).split()):
+            return s
+    return None
+
+
 def resolve_query(
     session: Session,
     q: str,
@@ -278,6 +307,8 @@ def resolve_query(
     only ever offered as a *suggestion*, never silently resolved — generic embeddings
     can't reliably separate near-identical lab analytes, so a human confirms (§9).
     Below the lexical floor we resolve nothing and return "did you mean" suggestions.
+    When the resolved row has no prices, fall back to a priced relative (see
+    `_priced_fallback`) so an exact-but-empty catalog entry doesn't dead-end the search.
     """
     if embedder is _USE_DEFAULT_EMBEDDER:
         embedder = get_embedder()
@@ -285,19 +316,24 @@ def resolve_query(
     suggestions = autocomplete(session, q, limit=8, category=category)
     result = ServiceMatcher(session, embedder=embedder).match(q)
 
+    resolved: Suggestion | None = None
     if result.service_id is not None and result.method in _CONFIDENT_METHODS:
         sid = _canonical_service_id(session, result.service_id)
-        resolved = _suggestion_for(session, sid, result.confidence)
-        if resolved is not None and category and resolved.category != category:
-            return None, suggestions
-        return resolved, suggestions
+        candidate = _suggestion_for(session, sid, result.confidence)
+        if candidate is not None and not (category and candidate.category != category):
+            resolved = candidate
 
     if result.method == "semantic" and result.service_id is not None:
         semantic = _suggestion_for(session, result.service_id, result.confidence)
         if semantic is not None and (not category or semantic.category == category):
             suggestions = [semantic] + [s for s in suggestions if s.id != semantic.id]
 
-    return None, suggestions
+    if resolved is None or not resolved.has_prices:
+        fallback = _priced_fallback(q, suggestions)
+        if fallback is not None:
+            resolved = fallback
+
+    return resolved, suggestions
 
 
 def _nearest_point(points, lat: float | None, lng: float | None):
@@ -318,6 +354,7 @@ def prices_for_service(
     price_max: int | None = None,
     lat: float | None = None,
     lng: float | None = None,
+    source_category: str | None = None,
 ) -> list[PriceCard]:
     now = datetime.now(UTC)
     age_days = func.floor(
@@ -348,6 +385,8 @@ def prices_for_service(
         stmt = stmt.where(ClinicServicePrice.price_kzt >= price_min)
     if price_max is not None:
         stmt = stmt.where(ClinicServicePrice.price_kzt <= price_max)
+    if source_category:
+        stmt = stmt.where(ClinicServicePrice.source_category == source_category)
     if not include_stale:
         stmt = stmt.where(age_days <= STALE_DAYS)
 
@@ -381,9 +420,58 @@ def prices_for_service(
     return _sort_cards(cards, sort)
 
 
+def prices_for_doctor(
+    session: Session, doctor_id: int, *, include_stale: bool = False
+) -> list[PriceCard]:
+    """All active services this doctor offers, as price cards (for the doctor page)."""
+    now = datetime.now(UTC)
+    age_days = func.floor(
+        func.extract("epoch", now - ClinicServicePrice.parsed_at) / 86400.0
+    ).cast(Float)
+
+    stmt = (
+        select(
+            ClinicServicePrice,
+            Clinic,
+            ClinicBranch,
+            Service,
+            RawPriceItem.metadata_json,
+            age_days.label("age"),
+        )
+        .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
+        .join(Service, ClinicServicePrice.service_id == Service.id)
+        .outerjoin(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
+        .outerjoin(RawPriceItem, ClinicServicePrice.raw_price_item_id == RawPriceItem.id)
+        .where(
+            ClinicServicePrice.doctor_id == doctor_id,
+            ClinicServicePrice.is_active.is_(True),
+        )
+    )
+    if not include_stale:
+        stmt = stmt.where(age_days <= STALE_DAYS)
+
+    cards = [
+        _build_card(price, clinic, branch, service, metadata, int(age))
+        for price, clinic, branch, service, metadata, age in session.execute(stmt)
+    ]
+    return _sort_cards(cards, "cheapest")
+
+
 def _doctor_name(metadata: dict | None) -> str | None:
     name = (metadata or {}).get("doctor")
     return name.strip() if isinstance(name, str) and name.strip() else None
+
+
+def _as_int(value: object) -> int | None:
+    return int(value) if isinstance(value, (int, float)) else None
+
+
+def _as_str(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _rating(value: object) -> float | None:
+    return round(float(value), 1) if isinstance(value, (int, float)) else None
 
 
 def _build_card(
@@ -395,6 +483,7 @@ def _build_card(
     age_days: int,
     branch_count: int = 1,
 ) -> PriceCard:
+    meta = metadata or {}
     return PriceCard(
         price_id=price.id,
         service_id=service.id,
@@ -402,6 +491,15 @@ def _build_card(
         clinic_id=clinic.id,
         clinic_name=clinic.name,
         doctor_name=_doctor_name(metadata),
+        doctor_id=_as_int(meta.get("doctor_id")),
+        doctor_avatar=_as_str(meta.get("doctor_avatar")),
+        doctor_experience=_as_int(meta.get("doctor_experience")),
+        doctor_rating=_rating(meta.get("doctor_rating")),
+        doctor_reviews=_as_int(meta.get("doctor_reviews")),
+        qualification=_as_str(meta.get("qualification")),
+        district=_as_str(meta.get("district")),
+        base_price_kzt=_as_int(meta.get("base_price")),
+        discount_percent=_as_int(meta.get("discount_percent")),
         branch_id=branch.id if branch else None,
         city=branch.city if branch else price.city,
         address=branch.address if branch else None,
@@ -415,6 +513,7 @@ def _build_card(
         freshness=_freshness(age_days),
         source_url=price.source_url,
         service_name_raw=price.service_name_raw,
+        source_category=price.source_category,
         content_hash=price.content_hash,
         match_confidence=price.match_confidence,
         match_method=price.match_method,

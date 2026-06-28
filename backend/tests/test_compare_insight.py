@@ -1,8 +1,21 @@
 from datetime import UTC, datetime, timedelta
 
-from app.models import Clinic, ClinicBranch, ClinicReview
+from app.db.session import SessionLocal
+from app.models import Clinic, ClinicBranch, ClinicReview, CompareInsightCache
 from app.services import compare_insight as ci
 from app.services.compare_insight import ClinicReviewData
+
+
+def _clear_insight_cache(service_id: int, clinic_ids: list[int]) -> None:
+    """Endpoint tests hit the real DB, where the cache persists — clear the key first."""
+    session = SessionLocal()
+    try:
+        session.query(CompareInsightCache).filter(
+            CompareInsightCache.cache_key == ci.cache_key(service_id, clinic_ids)
+        ).delete()
+        session.commit()
+    finally:
+        session.close()
 
 
 def _clinic_with_reviews(session, name, *, rating, reviews):
@@ -122,6 +135,7 @@ def test_should_return_ai_insight_endpoint(monkeypatch):
     service_id = search["resolved_service"]["id"]
     clinic_ids = [c["clinic_id"] for c in search["cards"][:2]]
     assert len(clinic_ids) == 2
+    _clear_insight_cache(service_id, clinic_ids)
 
     fake = FakeLlm(
         '{"summaries": ["хвалят персонал", "жалобы на ожидание"], '
@@ -153,6 +167,7 @@ def test_should_report_unavailable_when_no_key(monkeypatch):
     ).json()
     service_id = search["resolved_service"]["id"]
     clinic_ids = [c["clinic_id"] for c in search["cards"][:2]]
+    _clear_insight_cache(service_id, clinic_ids)
 
     monkeypatch.setattr(ci, "get_insighter", lambda: None)
 
