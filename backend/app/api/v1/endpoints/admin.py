@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.cities import CITY_NAMES
 from app.db.session import SessionLocal, get_db
 from app.schemas.admin import (
     CatalogPage,
@@ -12,13 +13,13 @@ from app.schemas.admin import (
     SourceHealth,
     UnmatchedPage,
 )
-from app.core.cities import CITY_NAMES
 from app.scrapers.registry import available_sources
 from app.services import admin
 from app.services.catalog_grow import grow_catalog
 from app.services.embeddings import get_embedder
 from app.services.llm_verify import get_verifier
 from app.services.pipeline import run_source
+from app.services.twogis_sync import refresh_reviews
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -64,8 +65,20 @@ def _run_sources(source_names: list[str], cities: list[str]) -> None:
                     logger.exception("background run failed for %s/%s", source, city)
                     session.rollback()
         _grow_and_reparse(session, source_names, cities, embedder)
+        _refresh_twogis_reviews(session)
     finally:
         session.close()
+
+
+def _refresh_twogis_reviews(session) -> None:
+    """Keep 2GIS ratings/reviews current alongside the price parse. Step B only —
+    plain HTTP off each branch's stored firm_id, no browser. Firm-id discovery
+    (Step A) is a separate offline job (app.scripts.discover_2gis_firms)."""
+    try:
+        refresh_reviews(session)
+    except Exception:  # noqa: BLE001 — ratings are best-effort; prices already published
+        logger.exception("2GIS reviews refresh failed")
+        session.rollback()
 
 
 @router.post("/parsers/run", response_model=RunTrigger)

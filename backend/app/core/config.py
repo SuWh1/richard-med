@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Richard Med"
     API_V1_PREFIX: str = "/api/v1"
     BACKEND_CORS_ORIGINS: str = "http://localhost:5173"
+    # Allow any Vercel deployment (production + per-branch preview URLs) by default.
+    BACKEND_CORS_ORIGIN_REGEX: str = r"https://.*\.vercel\.app"
 
     POSTGRES_USER: str = "richard_med"
     POSTGRES_PASSWORD: str = "richard_med"
@@ -17,6 +19,17 @@ class Settings(BaseSettings):
     # Geocoding (offline only — clinic addresses → lat/lng). Empty key disables it.
     YANDEX_GEOCODER_API_KEY: str = ""
     YANDEX_GEOCODER_URL: str = "https://geocode-maps.yandex.ru/v1"
+
+    # 2GIS ratings/reviews (offline only — never called in the user/search path).
+    # Step A (firm-id discovery) runs via the Node browser collector; Step B (reviews
+    # refresh) hits the public reviews API below with a stable firm_id, no browser.
+    TWOGIS_REVIEWS_KEY: str = "6e7e1929-4ea9-4a5d-8c05-d601860389bd"
+    TWOGIS_REVIEWS_URL: str = "https://public-api.reviews.2gis.com/3.0/branches"
+    # A 2GIS firm is accepted as a branch's match only within this radius (geocoding drift).
+    TWOGIS_MATCH_RADIUS_M: int = 500
+    # Reviews older than this are re-fetched on the daily refresh; fresh ones are skipped.
+    TWOGIS_REVIEW_TTL_DAYS: int = 7
+    TWOGIS_REVIEW_SAMPLE: int = 5
 
     # LLM match verification (offline only — confirms semantic suggestions). Empty key disables it.
     GEMINI_API_KEY: str = ""

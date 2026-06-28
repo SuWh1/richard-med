@@ -64,6 +64,11 @@ export function DashboardPage() {
 
   const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data]);
 
+  // Open the most recent run by default so the detail panel is never empty.
+  useEffect(() => {
+    if (selectedRun == null && runs.length > 0) setSelectedRun(runs[0].id);
+  }, [runs, selectedRun]);
+
   // Latest run per source (runs come newest-first) → which sources are mid-parse.
   const latestBySource = useMemo(() => {
     const map = new Map<string, ParseRunSummary>();
@@ -136,7 +141,6 @@ export function DashboardPage() {
   return (
     <AppShell
       breadcrumb={[{ label: "Кабинет", href: "/cabinet" }, { label: "Source Health" }]}
-      city={city === ALL_CITIES ? "Все города" : city}
     >
       <div className="mx-auto w-full max-w-[1400px] px-4 py-8 lg:px-6">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -175,42 +179,53 @@ export function DashboardPage() {
       </div>
 
       {runMutation.isError ? (
-        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <p className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           {(runMutation.error as Error).message}
         </p>
       ) : null}
 
-      <section className="space-y-3">
-        <h2 className="font-semibold text-foreground">Источники данных</h2>
-        {healthQuery.data?.map((health) => (
-          <SourceHealthCard
-            key={health.source_name}
-            health={health}
-            busy={isBusy(health.source_name)}
-            onRun={() => runMutation.mutate(health.source_name)}
-          />
-        ))}
-        {healthQuery.isLoading &&
-          Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-            >
-              <Skeleton className="h-2.5 w-2.5 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-3 w-24" />
-              </div>
-              <Skeleton className="h-6 w-28 rounded-full" />
-              <Skeleton className="h-9 w-9 rounded-lg" />
-            </div>
+      <section>
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          Источники данных
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {healthQuery.data?.map((health) => (
+            <SourceHealthCard
+              key={health.source_name}
+              health={health}
+              busy={isBusy(health.source_name)}
+              onRun={() => runMutation.mutate(health.source_name)}
+            />
           ))}
+          {healthQuery.isLoading &&
+            Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="space-y-4 rounded-2xl border border-border bg-white p-5 shadow-sm"
+              >
+                <Skeleton className="h-4 w-32" />
+                <div className="flex items-center gap-4">
+                  <Skeleton className="h-16 w-16 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+                </div>
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ))}
+        </div>
       </section>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <RunHistory runs={runs} selectedRun={selectedRun} onSelect={setSelectedRun} />
-        <RunDetailPanel runId={selectedRun} />
-      </div>
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          Запуски парсера
+        </h2>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <RunHistory runs={runs} selectedRun={selectedRun} onSelect={setSelectedRun} />
+          <RunDetailPanel runId={selectedRun} />
+        </div>
+      </section>
 
       <section className="mt-8">
         <ServicesTable busy={anyBusy} />
@@ -234,31 +249,31 @@ function RunHistory({
   onSelect: (id: number) => void;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <h2 className="border-b border-slate-100 px-4 py-3 font-semibold text-slate-900">
+    <div className="rounded-2xl border border-border bg-white shadow-sm">
+      <h2 className="border-b border-secondary px-4 py-3 font-semibold text-foreground">
         История запусков
       </h2>
       {runs.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-slate-500">Запусков пока нет.</p>
+        <p className="px-4 py-6 text-sm text-muted-foreground">Запусков пока нет.</p>
       ) : (
-        <AnimatedList className="divide-y divide-slate-100">
+        <AnimatedList className="divide-y divide-secondary">
           {runs.map((run) => (
           <button
             key={run.id}
             onClick={() => onSelect(run.id)}
-            className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition hover:bg-slate-50 ${
-              selectedRun === run.id ? "bg-slate-50" : ""
+            className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition hover:bg-secondary/50 ${
+              selectedRun === run.id ? "bg-secondary/50" : ""
             }`}
           >
             <div>
-              <div className="font-medium text-slate-900">
+              <div className="font-medium text-foreground">
                 {sourceLabel(run.source_name)}
-                <span className="ml-2 text-xs text-slate-400">{run.city}</span>
+                <span className="ml-2 text-xs text-faintest">{run.city}</span>
               </div>
-              <div className="text-xs text-slate-500">{formatDateTime(run.started_at)}</div>
+              <div className="text-xs text-muted-foreground">{formatDateTime(run.started_at)}</div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-muted-foreground">
                 {run.items_saved}/{run.items_found}
               </span>
               <RunStatusBadge status={run.status} />
@@ -280,14 +295,14 @@ function RunDetailPanel({ runId }: { runId: number | null }) {
 
   if (runId === null) {
     return (
-      <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 p-8 text-sm text-slate-400">
+      <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-sm text-faintest">
         Выберите запуск, чтобы увидеть детали
       </div>
     );
   }
   if (detailQuery.isLoading || !detailQuery.data) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
+      <div className="rounded-2xl border border-border bg-white p-8 text-sm text-muted-foreground">
         Загрузка…
       </div>
     );
@@ -296,9 +311,9 @@ function RunDetailPanel({ runId }: { runId: number | null }) {
   const { run, errors, unmatched_count, unmatched_samples, price_samples } = detailQuery.data;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-        <h2 className="font-semibold text-slate-900">
+    <div className="rounded-2xl border border-border bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-secondary px-4 py-3">
+        <h2 className="font-semibold text-foreground">
           {sourceLabel(run.source_name)} · {run.city}
         </h2>
         <RunStatusBadge status={run.status} />
@@ -314,9 +329,9 @@ function RunDetailPanel({ runId }: { runId: number | null }) {
       </dl>
 
       {errors.length > 0 ? (
-        <div className="border-t border-slate-100 px-4 py-3">
-          <h3 className="mb-1 text-xs font-semibold uppercase text-rose-700">Ошибки</h3>
-          <ul className="space-y-1 text-xs text-rose-700">
+        <div className="border-t border-secondary px-4 py-3">
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-danger">Ошибки</h3>
+          <ul className="space-y-1 text-xs text-danger">
             {errors.map((e, i) => (
               <li key={i} className="truncate" title={e}>
                 {e}
@@ -327,8 +342,8 @@ function RunDetailPanel({ runId }: { runId: number | null }) {
       ) : null}
 
       {price_samples.length > 0 ? (
-        <div className="border-t border-slate-100 px-4 py-3">
-          <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">
+        <div className="border-t border-secondary px-4 py-3">
+          <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
             Что распарсено (примеры)
           </h3>
           <ul className="space-y-2">
@@ -340,11 +355,11 @@ function RunDetailPanel({ runId }: { runId: number | null }) {
       ) : null}
 
       {unmatched_samples.length > 0 ? (
-        <div className="border-t border-slate-100 px-4 py-3">
-          <h3 className="mb-1 text-xs font-semibold uppercase text-amber-700">
+        <div className="border-t border-secondary px-4 py-3">
+          <h3 className="mb-1 text-xs font-semibold uppercase text-warning">
             Очередь на сопоставление
           </h3>
-          <ul className="space-y-1 text-xs text-slate-600">
+          <ul className="space-y-1 text-xs text-muted-foreground">
             {unmatched_samples.map((name, i) => (
               <li key={i} className="truncate" title={name}>
                 {name}
@@ -361,20 +376,20 @@ function PriceSampleRow({ sample }: { sample: ParsedPriceSample }) {
   return (
     <li className="flex items-center justify-between gap-3 text-sm">
       <div className="min-w-0">
-        <div className="truncate font-medium text-slate-900" title={sample.service_name}>
+        <div className="truncate font-medium text-foreground" title={sample.service_name}>
           {sample.service_name}
         </div>
-        <div className="truncate text-xs text-slate-500" title={sample.service_name_raw ?? ""}>
+        <div className="truncate text-xs text-muted-foreground" title={sample.service_name_raw ?? ""}>
           {sample.clinic_name}
           {sample.service_name_raw ? ` · ${sample.service_name_raw}` : ""}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <span className="text-xs text-slate-400" title="Уверенность сопоставления">
+        <span className="text-xs text-faintest" title="Уверенность сопоставления">
           {Math.round(sample.match_confidence * 100)}%
         </span>
         <FreshBadge freshness={sample.freshness} ageDays={sample.age_days} />
-        <span className="font-semibold text-slate-900">{formatPrice(sample.price_kzt)}</span>
+        <span className="font-semibold text-foreground">{formatPrice(sample.price_kzt)}</span>
       </div>
     </li>
   );
@@ -383,8 +398,8 @@ function PriceSampleRow({ sample }: { sample: ParsedPriceSample }) {
 function Metric({ label, value, warn }: { label: string; value: string | number; warn?: boolean }) {
   return (
     <div>
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className={`font-semibold ${warn ? "text-amber-700" : "text-slate-900"}`}>{value}</dd>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className={`font-semibold ${warn ? "text-warning" : "text-foreground"}`}>{value}</dd>
     </div>
   );
 }

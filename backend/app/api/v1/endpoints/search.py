@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.clinics import CompareResult
+from app.models import Service
+from app.schemas.clinics import CompareInsight, CompareResult
 from app.schemas.search import CityOut, MapPin, PriceCard, SearchResponse
-from app.services import clinics, live_search, search
+from app.services import clinics, compare_insight, live_search, search
 
 router = APIRouter()
 
@@ -125,3 +126,26 @@ def compare_clinics(
     if result is None:
         raise HTTPException(status_code=404, detail="Service not found")
     return result
+
+
+@router.get("/compare/insight", response_model=CompareInsight)
+def compare_insight_endpoint(
+    service_id: int = Query(..., ge=1),
+    clinic_ids: str = Query(..., description="comma-separated clinic ids"),
+    db: Session = Depends(get_db),
+) -> CompareInsight:
+    service = db.get(Service, service_id)
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    try:
+        return compare_insight.compare_insight(
+            db,
+            service_id,
+            service.name_ru,
+            _parse_clinic_ids(clinic_ids),
+            llm=compare_insight.get_insighter(),
+        )
+    except compare_insight.InsightUnavailable as exc:
+        raise HTTPException(
+            status_code=503, detail="AI comparison temporarily unavailable"
+        ) from exc

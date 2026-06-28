@@ -25,7 +25,6 @@ export interface Crumb {
 
 interface AppShellProps {
   breadcrumb: Crumb[];
-  city?: string;
   headerRight?: ReactNode;
   children: ReactNode;
 }
@@ -36,13 +35,13 @@ function readSidebarOpen(): boolean {
   return match ? match[1] === "true" : true;
 }
 
-export function AppShell({ breadcrumb, city, headerRight, children }: AppShellProps) {
+export function AppShell({ breadcrumb, headerRight, children }: AppShellProps) {
   const parent = [...breadcrumb].reverse().find((c) => c.href);
   const current = breadcrumb[breadcrumb.length - 1];
 
   return (
     <SidebarProvider defaultOpen={readSidebarOpen()} className="h-svh overflow-hidden">
-      <AppSidebar city={city} />
+      <AppSidebar />
       <SidebarInset className="overflow-hidden bg-inset">
         <header className="z-30 flex h-14 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />

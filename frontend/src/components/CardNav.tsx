@@ -1,4 +1,4 @@
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import { gsap } from "gsap";
@@ -96,19 +96,43 @@ export function CardNav({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ease, items]);
 
-  const toggleMenu = () => {
+  const openMenu = () => {
     const tl = tlRef.current;
     if (!tl) return;
-    if (!isExpanded) {
-      setIsHamburgerOpen(true);
-      setIsExpanded(true);
-      tl.play(0);
-    } else {
-      setIsHamburgerOpen(false);
-      tl.eventCallback("onReverseComplete", () => setIsExpanded(false));
-      tl.reverse();
-    }
+    setIsHamburgerOpen(true);
+    setIsExpanded(true);
+    tl.play(0);
   };
+
+  const closeMenu = () => {
+    const tl = tlRef.current;
+    if (!tl) return;
+    setIsHamburgerOpen(false);
+    tl.eventCallback("onReverseComplete", () => setIsExpanded(false));
+    tl.reverse();
+  };
+
+  const toggleMenu = () => {
+    if (isExpanded) closeMenu();
+    else openMenu();
+  };
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) closeMenu();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExpanded]);
 
   const go = (href: string) => {
     toggleMenu();

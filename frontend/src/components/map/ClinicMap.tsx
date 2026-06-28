@@ -27,6 +27,7 @@ interface ClinicMapProps {
   median: number | null;
   userCoords?: Coords | null;
   focusPoint?: [number, number] | null;
+  onRequestLocation?: () => Promise<Coords | null>;
 }
 
 const KZ_CENTER: [number, number] = [48.0196, 66.9237];
@@ -90,14 +91,27 @@ function PanToSelected({
     if (selectedBranchId == null) return;
     const pin = pins.find((p) => p.branch_id === selectedBranchId);
     if (!pin) return;
+    // Open AFTER the zoom finishes: mid-animation the pin is still inside a cluster,
+    // so an immediate openPopup() is a no-op. moveend (declustered) reliably opens it;
+    // the timeout covers the case where the view is already there and no move fires.
+    const open = () => markers.current.get(pin.branch_id)?.openPopup();
     // Zoom in (not just pan) so the highlighted point is clearly located, not a dot in a wide view.
     map.setView([pin.lat, pin.lng], Math.max(map.getZoom(), 15), {
       animate: true,
       duration: 0.4,
     });
-    markers.current.get(pin.branch_id)?.openPopup();
+    map.once("moveend", open);
+    const t = window.setTimeout(open, 500);
+    return () => {
+      map.off("moveend", open);
+      window.clearTimeout(t);
+    };
   }, [map, pins, selectedBranchId, markers]);
   return null;
+}
+
+function eq(a: number, b: number): boolean {
+  return Math.abs(a - b) < 1e-6;
 }
 
 export function ClinicMap({
@@ -108,12 +122,25 @@ export function ClinicMap({
   median,
   userCoords,
   focusPoint,
+  onRequestLocation,
 }: ClinicMapProps) {
   const points = useMemo<[number, number][]>(
     () => pins.map((p) => [p.lat, p.lng]),
     [pins],
   );
   const markers = useRef<Map<number, L.Marker>>(new Map());
+
+  // The single result (or focused list item) whose popup opens on load — no click needed.
+  const autoOpenId = useMemo<number | null>(() => {
+    if (pins.length === 1) return pins[0].branch_id;
+    if (focusPoint) {
+      return (
+        pins.find((p) => eq(p.lat, focusPoint[0]) && eq(p.lng, focusPoint[1]))?.branch_id ??
+        null
+      );
+    }
+    return null;
+  }, [pins, focusPoint]);
 
   return (
     <MapContainer
@@ -148,10 +175,20 @@ export function ClinicMap({
               selected: pin.branch_id === selectedBranchId,
               stale: pin.freshness === "stale",
             })}
-            eventHandlers={{ click: () => onSelectBranch(pin.branch_id) }}
+            eventHandlers={{
+              click: () => onSelectBranch(pin.branch_id),
+              add: (e) => {
+                if (pin.branch_id === autoOpenId) (e.target as L.Marker).openPopup();
+              },
+            }}
           >
             <Popup autoPan={false}>
-              <MapPopupCard pin={pin} median={median} userCoords={userCoords} />
+              <MapPopupCard
+                pin={pin}
+                median={median}
+                userCoords={userCoords}
+                onRequestLocation={onRequestLocation}
+              />
             </Popup>
           </Marker>
         ))}

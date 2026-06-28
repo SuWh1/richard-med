@@ -1,22 +1,10 @@
 import { type ReactNode } from "react";
+import { Building2 } from "lucide-react";
 
 import type { SearchState } from "@/hooks/useSearchState";
 import { DEFAULT_CITY } from "@/hooks/useSearchState";
-import type { SortKey } from "@/types";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { pointWord } from "@/lib/rating";
 import { FiltersSheet } from "./FiltersSheet";
-
-const SORT_LABELS: { key: SortKey; label: string }[] = [
-  { key: "best_value", label: "Оптимальные" },
-  { key: "cheapest", label: "Сначала дешёвые" },
-  { key: "nearest", label: "Ближайшие" },
-];
 
 function clinicWord(count: number): string {
   const mod10 = count % 10;
@@ -28,61 +16,61 @@ function clinicWord(count: number): string {
 
 interface ResultsControlsBarProps {
   searchBar: ReactNode;
+  action?: ReactNode;
   state: SearchState;
   cities: string[];
   onPatch: (patch: Partial<SearchState>) => void;
   onReset: () => void;
   count: number;
+  pointsCount?: number;
 }
 
 export function ResultsControlsBar({
   searchBar,
+  action,
   state,
   cities,
   onPatch,
   onReset,
   count,
+  pointsCount = 0,
 }: ResultsControlsBarProps) {
   const activeFilters =
     (state.city !== DEFAULT_CITY ? 1 : 0) +
+    (state.sort !== "best_value" ? 1 : 0) +
     (state.priceMin || state.priceMax ? 1 : 0) +
     (state.includeStale ? 1 : 0);
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-inset">
       <div className="mx-auto w-full max-w-[1400px] px-4 py-2.5">
-        <div className="min-w-0">{searchBar}</div>
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">{searchBar}</div>
+          {action && <div className="shrink-0">{action}</div>}
+        </div>
 
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <span className="shrink-0 text-sm text-muted-foreground">
-            <span className="font-semibold text-foreground">{count}</span>{" "}
-            {clinicWord(count)}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-2 truncate text-sm text-muted-foreground">
+            <span>
+              <span className="font-semibold text-foreground">{count}</span>{" "}
+              {clinicWord(count)}
+            </span>
+            {pointsCount > count && (
+              <span className="flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
+                <Building2 className="h-3 w-3" />
+                <span className="font-medium text-foreground">{pointsCount}</span>{" "}
+                {pointWord(pointsCount)}
+              </span>
+            )}
           </span>
 
-          <div className="flex shrink-0 items-center gap-2">
-            <Select
-              value={state.sort}
-              onValueChange={(v) => onPatch({ sort: v as SortKey })}
-            >
-              <SelectTrigger size="sm" className="w-auto gap-1.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                {SORT_LABELS.map((opt) => (
-                  <SelectItem key={opt.key} value={opt.key}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <FiltersSheet
-              state={state}
-              cities={cities}
-              onPatch={onPatch}
-              onReset={onReset}
-              activeCount={activeFilters}
-            />
-          </div>
+          <FiltersSheet
+            state={state}
+            cities={cities}
+            onPatch={onPatch}
+            onReset={onReset}
+            activeCount={activeFilters}
+          />
         </div>
       </div>
     </div>

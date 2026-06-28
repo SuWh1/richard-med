@@ -1,0 +1,12 @@
+{
+  "name": "twogis-firm-collector",
+  "private": true,
+  "type": "module",
+  "description": "Offline 2GIS firm-id discovery (Step A). Drives a headless browser to read firm candidates from the 2gis.kz search page; matching is done in Python.",
+  "scripts": {
+    "collect": "node collect_firms.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

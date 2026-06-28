@@ -18,6 +18,7 @@ from app.scripts import (
     import_branches,
     import_catalog,
     load_2gis_reviews,
+    load_helix_branches,
 )
 from app.services.embeddings import get_embedder
 from app.services.pipeline import run_source
@@ -56,6 +57,9 @@ def main() -> None:
 
     print("6/6 importing clinic branches (with coordinates)…")
     import_branches.main()
+
+    print("backfilling branches for price-only sources (Хеликс)…")
+    load_helix_branches.main()
 
     print("seeding 2GIS ratings + reviews…")
     load_2gis_reviews.main()

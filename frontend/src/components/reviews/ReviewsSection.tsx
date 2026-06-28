@@ -1,28 +1,42 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MessageSquare, Star } from "lucide-react";
+import { ExternalLink, MessageSquare, Star } from "lucide-react";
 
 import { fetchClinicReviews } from "@/lib/api";
 import { formatRating, formatReviewCount, reviewWord } from "@/lib/rating";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Pager } from "@/components/Pager";
 import { ReviewItem } from "./ReviewItem";
 
 interface ReviewsSectionProps {
   clinicId: number;
   rating: number | null;
   reviewsCount: number;
+  sourceHref?: string;
 }
 
 const FETCH_LIMIT = 30;
+const PER_PAGE = 5;
 
-export function ReviewsSection({ clinicId, rating, reviewsCount }: ReviewsSectionProps) {
+export function ReviewsSection({
+  clinicId,
+  rating,
+  reviewsCount,
+  sourceHref,
+}: ReviewsSectionProps) {
   const reviewsQuery = useQuery({
     queryKey: ["clinic-reviews", clinicId],
     queryFn: () => fetchClinicReviews(clinicId, FETCH_LIMIT),
     enabled: rating != null,
   });
 
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [clinicId]);
+
   if (rating == null) return null;
   const reviews = reviewsQuery.data ?? [];
+  const totalPages = Math.ceil(reviews.length / PER_PAGE);
+  const pageItems = reviews.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   return (
     <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
@@ -40,7 +54,18 @@ export function ReviewsSection({ clinicId, rating, reviewsCount }: ReviewsSectio
             {formatReviewCount(reviewsCount)} {reviewWord(reviewsCount)}
           </span>
         </div>
-        <span className="ml-auto text-[11px] text-faintest">Источник: 2ГИС</span>
+        {sourceHref ? (
+          <a
+            href={sourceHref}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+          >
+            Источник: 2ГИС <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : (
+          <span className="ml-auto text-[11px] text-faintest">Источник: 2ГИС</span>
+        )}
       </div>
 
       <div className="px-5">
@@ -71,10 +96,16 @@ export function ReviewsSection({ clinicId, rating, reviewsCount }: ReviewsSectio
         )}
 
         <div className="divide-y divide-secondary">
-          {reviews.map((review) => (
+          {pageItems.map((review) => (
             <ReviewItem key={review.id} review={review} />
           ))}
         </div>
+
+        {totalPages > 1 && (
+          <div className="border-t border-secondary py-3">
+            <Pager page={page} totalPages={totalPages} onPage={setPage} />
+          </div>
+        )}
       </div>
     </div>
   );

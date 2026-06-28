@@ -29,6 +29,27 @@ class ClinicDetail(BaseModel):
     branches: list[BranchInfo]
 
 
+class ClinicSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    source_name: str
+    website_url: str | None
+    rating: float | None
+    reviews_count: int
+    branches_count: int
+    active_services_count: int
+    cities: list[str]
+
+
+class ClinicListPage(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    total: int
+    items: list[ClinicSummary]
+
+
 class ReviewRow(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -58,6 +79,13 @@ class ClinicServiceRow(BaseModel):
     branch_id: int | None
 
 
+class ClinicServicesPage(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    total: int
+    items: list[ClinicServiceRow]
+
+
 class CompareRow(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -85,3 +113,24 @@ class CompareResult(BaseModel):
     service_id: int
     service_name: str
     rows: list[CompareRow]
+
+
+class ClinicInsight(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    clinic_id: int
+    clinic_name: str
+    rating: float | None
+    reviews_count: int | None
+    summary: str
+
+
+class CompareInsight(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    available: bool
+    service_name: str
+    clinics: list[ClinicInsight]
+    verdict: str | None
+    best_clinic_id: int | None
+    reason: str | None = None

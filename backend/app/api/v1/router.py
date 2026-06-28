@@ -4,6 +4,7 @@ from app.api.v1.endpoints import (
     admin,
     analytics,
     auth,
+    cabinet,
     clinics,
     search,
     services,
@@ -13,6 +14,7 @@ from app.core.auth import require_admin
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(cabinet.router, prefix="/cabinet", tags=["cabinet"])
 api_router.include_router(services.router, prefix="/services", tags=["services"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(clinics.router, prefix="/clinics", tags=["clinics"])

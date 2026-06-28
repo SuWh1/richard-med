@@ -2,6 +2,10 @@
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001/api/v1";
 const TOKEN_KEY = "auth_token";
 
+const NGROK_HEADERS: Record<string, string> = BASE.includes("ngrok")
+  ? { "ngrok-skip-browser-warning": "true" }
+  : {};
+
 export interface AuthUser {
   id: number;
   email: string;
@@ -29,7 +33,7 @@ async function postAuth(
 ): Promise<{ token: string; user: AuthUser }> {
   const res = await fetch(`${BASE}/auth${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...NGROK_HEADERS },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -56,7 +60,9 @@ export function logout(): void {
 
 export async function fetchMe(): Promise<AuthUser | null> {
   if (!getToken()) return null;
-  const res = await fetch(`${BASE}/auth/me`, { headers: authHeader() });
+  const res = await fetch(`${BASE}/auth/me`, {
+    headers: { ...NGROK_HEADERS, ...authHeader() },
+  });
   if (!res.ok) {
     clearToken();
     return null;

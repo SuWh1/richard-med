@@ -2,8 +2,10 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Clock, ExternalLink, Star } from "lucide-react";
 
-import type { CompareRow } from "@/types";
-import { fetchCompare } from "@/lib/api";
+import type { ClinicInsight, CompareRow } from "@/types";
+import { fetchCompare, fetchCompareInsight } from "@/lib/api";
+import { formatRating } from "@/lib/rating";
+import { Skeleton } from "@/components/ui/skeleton";
 import { parseClinicIds } from "@/lib/compare";
 import { ADVANTAGE, compareInsights } from "@/lib/compareInsights";
 import { sourceViewUrl } from "@/lib/sourceUrl";
@@ -13,10 +15,9 @@ import { cn } from "@/components/ui/utils";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
 import { FreshBadge } from "@/components/FreshBadge";
 import { AppShell } from "@/components/AppShell";
-import { Skeleton } from "@/components/ui/skeleton";
 
 function durationLabel(min: number | null, max: number | null): string {
-  if (min == null && max == null) return "–";
+  if (min == null && max == null) return "";
   if (min != null && max != null && min !== max) return `${min}–${max} дн.`;
   return `${max ?? min} дн.`;
 }
@@ -56,12 +57,20 @@ function ClinicColumn({
   advantages,
   freshest,
   fastest,
+  ai,
+  aiLoading,
+  aiError,
+  isAiPick,
 }: {
   row: CompareRow;
   serviceName: string;
   advantages: string[];
   freshest: boolean;
   fastest: boolean;
+  ai?: ClinicInsight;
+  aiLoading: boolean;
+  aiError: boolean;
+  isAiPick: boolean;
 }) {
   const hasDuration = row.duration_min != null || row.duration_max != null;
   const sourceHref = sourceViewUrl(row.source_url, row.city, serviceName);
@@ -87,7 +96,7 @@ function ClinicColumn({
         <div className="min-w-0">
           <div className="truncate font-semibold text-foreground">{row.clinic_name}</div>
           <div className="truncate text-xs text-muted-foreground">
-            {row.city ?? row.address ?? "–"}
+            {row.city ?? row.address ?? ""}
           </div>
         </div>
       </div>
@@ -130,9 +139,7 @@ function ClinicColumn({
                 <Clock className="h-3.5 w-3.5" />
                 {durationLabel(row.duration_min, row.duration_max)}
               </span>
-            ) : (
-              "–"
-            )
+            ) : null
           }
         />
       </div>
@@ -150,7 +157,43 @@ function ClinicColumn({
         </div>
       )}
 
-      <div className="mt-5 flex items-center gap-3 border-t border-secondary pt-4 text-sm">
+      <div
+        className={cn(
+          "mt-4 rounded-xl border px-3 py-2.5",
+          isAiPick ? "border-success/40 bg-success-soft/40" : "border-border bg-accent/15",
+        )}
+      >
+        <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-[11px] font-semibold text-primary">Отзывы (ИИ)</span>
+          {ai?.rating != null && (
+            <span className="flex items-center gap-0.5 text-[11px] font-semibold text-foreground">
+              <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+              {formatRating(ai.rating)}
+            </span>
+          )}
+          {isAiPick && (
+            <span className="rounded-full bg-success px-1.5 py-0.5 text-[10px] font-medium text-white">
+              Выбор ИИ
+            </span>
+          )}
+        </div>
+        {aiLoading ? (
+          <div className="space-y-1.5 py-0.5">
+            <Skeleton className="h-2.5 w-full" />
+            <Skeleton className="h-2.5 w-4/5" />
+          </div>
+        ) : ai && ai.rating == null && !ai.reviews_count ? (
+          <p className="text-[12px] text-faintest">Отзывов пока нет</p>
+        ) : ai?.summary ? (
+          <p className="text-[12px] leading-relaxed text-muted-foreground">{ai.summary}</p>
+        ) : (
+          <p className="text-[12px] text-faintest">
+            {aiError ? "ИИ недоступен" : "Отзывов пока нет"}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-4 flex items-center gap-3 border-t border-secondary pt-4 text-sm">
         <Link
           to={`/clinics/${row.clinic_id}`}
           className="font-medium text-primary hover:underline"
@@ -184,16 +227,33 @@ export function ComparePage() {
     enabled,
   });
 
+  const insightQuery = useQuery({
+    queryKey: ["compare-insight", serviceId, clinicIds.join(",")],
+    queryFn: () => fetchCompareInsight(serviceId, clinicIds),
+    enabled,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
   const data = compareQuery.data;
   const rows = data?.rows ?? [];
   const diff = savings(rows);
   const insights = compareInsights(rows);
   const wide = rows.length >= 3;
 
+  const insight = insightQuery.data;
+  const aiByClinic = new Map<number, ClinicInsight>(
+    (insight?.clinics ?? []).map((c) => [c.clinic_id, c]),
+  );
+  // Skeleton until the query truly settles, so the empty state never flashes first.
+  const aiLoading = enabled && !insightQuery.isSuccess && !insightQuery.isError;
+  const aiError = insightQuery.isError;
+
   return (
     <AppShell
       breadcrumb={[
-        { label: "Поиск", href: "/" },
+        { label: "Поиск", href: "/search" },
         ...searchCrumb(fromSearch),
         { label: "Сравнение" },
       ]}
@@ -208,7 +268,7 @@ export function ComparePage() {
         {compareQuery.isLoading && (
           <div className="space-y-4">
             <Skeleton className="h-7 w-64" />
-            <div className="mx-auto grid max-w-3xl gap-4 sm:grid-cols-2">
+            <div className="mx-auto grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
               {Array.from({ length: 2 }).map((_, i) => (
                 <div
                   key={i}
@@ -250,7 +310,7 @@ export function ComparePage() {
 
             <div
               className={cn(
-                "mx-auto grid gap-4 sm:grid-cols-2",
+                "mx-auto grid w-full grid-cols-1 gap-4 sm:grid-cols-2",
                 wide ? "max-w-5xl lg:grid-cols-3" : "max-w-3xl",
               )}
             >
@@ -262,6 +322,10 @@ export function ComparePage() {
                   advantages={insights[row.clinic_id] ?? []}
                   freshest={(insights[row.clinic_id] ?? []).includes(ADVANTAGE.fresh)}
                   fastest={(insights[row.clinic_id] ?? []).includes(ADVANTAGE.fast)}
+                  ai={aiByClinic.get(row.clinic_id)}
+                  aiLoading={aiLoading}
+                  aiError={aiError}
+                  isAiPick={insight?.best_clinic_id === row.clinic_id}
                 />
               ))}
             </div>

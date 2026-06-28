@@ -1,5 +1,7 @@
 import { type MouseEvent } from "react";
 import {
+  Bookmark,
+  BookmarkCheck,
   Building2,
   Check,
   ChevronDown,
@@ -15,6 +17,7 @@ import { formatPrice } from "@/lib/format";
 import { pointWord } from "@/lib/rating";
 import { discountPct } from "@/lib/results";
 import { type Coords, formatDistance } from "@/lib/geo";
+import { geoRouteHandler } from "@/lib/geoRoute";
 import type { ClinicPoint } from "@/lib/clinicPoints";
 import { twoGisRouteUrl, twoGisSearchUrl } from "@/lib/twoGisRoute";
 import { cn } from "@/components/ui/utils";
@@ -42,6 +45,10 @@ interface ClinicCardProps {
   distanceKm?: number | null;
   points?: ClinicPoint[];
   onPointHover?: (branchId: number) => void;
+  onPointOpen?: (branchId: number) => void;
+  onRequestLocation?: () => Promise<Coords | null>;
+  isSaved?: boolean;
+  onSave?: () => void;
 }
 
 function routeUrl(card: PriceCardData, userCoords?: Coords | null): string {
@@ -70,11 +77,20 @@ export function ClinicCard({
   distanceKm,
   points,
   onPointHover,
+  onPointOpen,
+  onRequestLocation,
+  isSaved = false,
+  onSave,
 }: ClinicCardProps) {
   const distance = formatDistance(distanceKm ?? null);
   const multiPoint = (points?.length ?? 0) > 1;
   const belowMedianPct = median != null ? discountPct(card.price_kzt, median) : 0;
   const stop = (e: MouseEvent) => e.stopPropagation();
+  const handleRoute = geoRouteHandler(
+    (c) => routeUrl(card, c),
+    userCoords,
+    onRequestLocation,
+  );
 
   return (
     <div
@@ -176,7 +192,7 @@ export function ClinicCard({
               href={routeUrl(card, userCoords)}
               target="_blank"
               rel="noreferrer"
-              onClick={stop}
+              onClick={handleRoute}
               className="flex min-h-[32px] items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-[11px] text-muted-foreground transition-all hover:border-primary/30 hover:bg-secondary"
             >
               <Navigation className="h-3 w-3" /> Маршрут
@@ -207,6 +223,33 @@ export function ClinicCard({
                 )}
               </button>
             )}
+            {onSave && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  stop(e);
+                  onSave();
+                }}
+                aria-pressed={isSaved}
+                title={isSaved ? "В избранном" : "Сохранить клинику"}
+                className={cn(
+                  "flex min-h-[32px] items-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] transition-all",
+                  isSaved
+                    ? "border-primary bg-accent/50 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/30 hover:bg-secondary",
+                )}
+              >
+                {isSaved ? (
+                  <>
+                    <BookmarkCheck className="h-3 w-3" /> Сохранено
+                  </>
+                ) : (
+                  <>
+                    <Bookmark className="h-3 w-3" /> Сохранить
+                  </>
+                )}
+              </button>
+            )}
             {onDetail && (
               <span className="ml-auto text-[11px] font-medium text-muted-foreground">
                 Подробнее →
@@ -229,16 +272,18 @@ export function ClinicCard({
                   {points.map((pt) => (
                     <div
                       key={pt.branchId}
+                      role="button"
+                      title="Открыть этот филиал"
                       onMouseEnter={() => onPointHover?.(pt.branchId)}
                       onClick={(e) => {
                         stop(e);
-                        onPointHover?.(pt.branchId);
+                        onPointOpen?.(pt.branchId);
                       }}
                       className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-1.5 text-[11px] transition-all hover:border-primary/40 hover:bg-secondary"
                     >
                       <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
                         <MapPin className="h-3 w-3 shrink-0 text-faintest" />
-                        <span className="truncate">{pt.address ?? "—"}</span>
+                        <span className="truncate">{pt.address ?? ""}</span>
                       </span>
                       {pt.distanceKm != null && (
                         <span className="shrink-0 text-faintest">

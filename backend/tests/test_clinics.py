@@ -18,7 +18,9 @@ from app.services.clinics import (
     clinic_detail,
     clinic_reviews,
     clinic_services,
+    clinic_services_page,
     compare,
+    list_clinics,
 )
 
 client = TestClient(app)
@@ -338,3 +340,115 @@ def test_should_compare_endpoint_across_clinics():
     body = resp.json()
     assert len(body["rows"]) == 2
     assert sum(1 for r in body["rows"] if r["is_cheapest"]) == 1
+
+
+def test_should_list_clinics_with_aggregate_counts(db_session):
+    sid1, sid2 = _service_ids(db_session, 2)
+    clinic, branches = _make_clinic(db_session, "Тест Директория", branches=2)
+    _price(db_session, clinic, branches[0], sid1, price=1000)
+    _price(db_session, clinic, branches[0], sid2, price=2000)
+
+    page = list_clinics(db_session, source="test_clinics")
+
+    item = next(i for i in page.items if i.id == clinic.id)
+    assert page.total >= 1
+    assert item.name == "Тест Директория"
+    assert item.source_name == "test_clinics"
+    assert item.branches_count == 2
+    assert item.active_services_count == 2
+    assert item.cities == ["Астана"]
+
+
+def test_should_filter_clinics_list_by_name_query(db_session):
+    _make_clinic(db_session, "Альфа Мед", branches=1)
+    _make_clinic(db_session, "Бета Клиника", branches=1)
+
+    page = list_clinics(db_session, q="альфа", source="test_clinics")
+
+    assert page.total == 1
+    assert page.items[0].name == "Альфа Мед"
+
+
+def test_should_paginate_clinics_list(db_session):
+    for i in range(3):
+        _make_clinic(db_session, f"Клиника {i}", branches=1)
+
+    first = list_clinics(db_session, source="test_clinics", limit=2, offset=0)
+    second = list_clinics(db_session, source="test_clinics", limit=2, offset=2)
+
+    assert first.total == 3
+    assert len(first.items) == 2
+    assert len(second.items) == 1
+
+
+def test_should_return_paginated_clinics_list_endpoint():
+    resp = client.get("/api/v1/clinics", params={"limit": 5})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body["total"], int)
+    assert len(body["items"]) <= 5
+    if body["items"]:
+        item = body["items"][0]
+        for key in (
+            "id",
+            "name",
+            "source_name",
+            "rating",
+            "reviews_count",
+            "branches_count",
+            "active_services_count",
+            "cities",
+        ):
+            assert key in item
+
+
+def test_should_filter_clinics_endpoint_by_source():
+    resp = client.get("/api/v1/clinics", params={"source": "kdl_olymp", "limit": 50})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] >= 1
+    assert all(i["source_name"] == "kdl_olymp" for i in body["items"])
+
+
+def test_should_paginate_clinic_services(db_session):
+    sids = _service_ids(db_session, 3)
+    clinic, branches = _make_clinic(db_session, "Сервисы")
+    _price(db_session, clinic, branches[0], sids[0], price=100)
+    _price(db_session, clinic, branches[0], sids[1], price=200)
+    _price(db_session, clinic, branches[0], sids[2], price=300)
+
+    first = clinic_services_page(db_session, clinic.id, limit=2, offset=0)
+    second = clinic_services_page(db_session, clinic.id, limit=2, offset=2)
+
+    assert first.total == 3
+    assert [i.price_kzt for i in first.items] == [100, 200]
+    assert len(second.items) == 1
+    assert second.items[0].price_kzt == 300
+
+
+def test_should_filter_clinic_services_by_query(db_session):
+    sids = _service_ids(db_session, 2)
+    clinic, branches = _make_clinic(db_session, "Фильтр услуг")
+    _price(db_session, clinic, branches[0], sids[0], price=100)
+    _price(db_session, clinic, branches[0], sids[1], price=200)
+    token = db_session.get(Service, sids[0]).name_ru.split()[0]
+
+    page = clinic_services_page(db_session, clinic.id, q=token)
+
+    assert page.total >= 1
+    assert all(token.lower() in i.service_name.lower() for i in page.items)
+    assert any(i.service_id == sids[0] for i in page.items)
+
+
+def test_should_return_paginated_services_endpoint():
+    clinics_list = client.get("/api/v1/clinics", params={"limit": 1}).json()
+    clinic_id = clinics_list["items"][0]["id"]
+
+    resp = client.get(f"/api/v1/clinics/{clinic_id}/services", params={"limit": 5})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body["total"], int)
+    assert len(body["items"]) <= 5

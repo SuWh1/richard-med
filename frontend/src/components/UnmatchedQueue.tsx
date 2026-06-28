@@ -52,7 +52,7 @@ export function UnmatchedQueue({ busy = false }: { busy?: boolean }) {
         <div>
           <h2 className="font-semibold text-slate-900">Очередь на сопоставление</h2>
           <p className="text-xs text-slate-500">
-            Сырое название · кандидат каталога · уверенность — {total.toLocaleString("ru-RU")}
+            Сырое название · кандидат каталога · уверенность · {total.toLocaleString("ru-RU")}
           </p>
         </div>
         <Select value={status} onValueChange={setStatus}>
@@ -93,7 +93,7 @@ export function UnmatchedQueue({ busy = false }: { busy?: boolean }) {
                     {row.suggested_name}
                   </span>
                 ) : (
-                  <span className="text-slate-400">— нет похожих</span>
+                  <span className="text-slate-400">нет похожих</span>
                 )}
               </TableCell>
               <TableCell className="text-right">

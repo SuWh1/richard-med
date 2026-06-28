@@ -4,6 +4,7 @@ import type { MapPin } from "@/types";
 import { formatPrice } from "@/lib/format";
 import { savingsVsMedian } from "@/lib/results";
 import type { Coords } from "@/lib/geo";
+import { geoRouteHandler } from "@/lib/geoRoute";
 import { twoGisRouteUrl } from "@/lib/twoGisRoute";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
 
@@ -11,6 +12,7 @@ interface MapPopupCardProps {
   pin: MapPin;
   median: number | null;
   userCoords?: Coords | null;
+  onRequestLocation?: () => Promise<Coords | null>;
 }
 
 function routeUrl(pin: MapPin, userCoords?: Coords | null): string {
@@ -21,8 +23,18 @@ function routeUrl(pin: MapPin, userCoords?: Coords | null): string {
   });
 }
 
-export function MapPopupCard({ pin, median, userCoords }: MapPopupCardProps) {
+export function MapPopupCard({
+  pin,
+  median,
+  userCoords,
+  onRequestLocation,
+}: MapPopupCardProps) {
   const savings = median != null ? savingsVsMedian(pin.price_kzt, median) : 0;
+  const handleRoute = geoRouteHandler(
+    (c) => routeUrl(pin, c),
+    userCoords,
+    onRequestLocation,
+  );
 
   return (
     <div className="w-60">
@@ -54,6 +66,7 @@ export function MapPopupCard({ pin, median, userCoords }: MapPopupCardProps) {
           href={routeUrl(pin, userCoords)}
           target="_blank"
           rel="noreferrer"
+          onClick={handleRoute}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium !text-muted-foreground transition-colors hover:bg-secondary"
         >
           <Navigation className="h-3.5 w-3.5" /> Маршрут

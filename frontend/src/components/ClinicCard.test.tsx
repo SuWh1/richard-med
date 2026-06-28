@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -133,6 +133,20 @@ describe("ClinicCard", () => {
     expect(onPointHover).toHaveBeenCalledWith(12);
   });
 
+  it("should open a specific point when its row is clicked", async () => {
+    const onPointOpen = vi.fn();
+    const points = [
+      { branchId: 11, address: "ул. Первая, 1", lat: 43.2, lng: 76.9, distanceKm: 0.5 },
+      { branchId: 12, address: "ул. Вторая, 2", lat: 43.3, lng: 76.95, distanceKm: 2.1 },
+    ];
+    renderCard({ card: { ...card, branch_count: 2 }, points, onPointOpen });
+
+    await userEvent.click(screen.getByText(/2 точки в городе/));
+    await userEvent.click(screen.getByText("ул. Вторая, 2"));
+
+    expect(onPointOpen).toHaveBeenCalledWith(12);
+  });
+
   it("should not render a compare button when onCompare is absent", () => {
     renderCard();
     expect(screen.queryByText(/Сравнить|В сравнении/)).not.toBeInTheDocument();
@@ -148,6 +162,23 @@ describe("ClinicCard", () => {
   it("should show the selected label when inCompare is true", () => {
     renderCard({ onCompare: () => {}, inCompare: true });
     expect(screen.getByText("В сравнении")).toBeInTheDocument();
+  });
+
+  it("should call onSave when the save button is clicked", async () => {
+    const onSave = vi.fn();
+    renderCard({ onSave });
+    await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
+    expect(onSave).toHaveBeenCalledOnce();
+  });
+
+  it("should show the saved state when isSaved is true", () => {
+    renderCard({ onSave: () => {}, isSaved: true });
+    expect(screen.getByText("Сохранено")).toBeInTheDocument();
+  });
+
+  it("should not render a save button when onSave is absent", () => {
+    renderCard();
+    expect(screen.queryByText(/Сохранить|Сохранено/)).not.toBeInTheDocument();
   });
 
   it("should build a 2GIS directions link from the card coordinates", () => {
@@ -166,6 +197,28 @@ describe("ClinicCard", () => {
       "href",
       "https://2gis.kz/astana/directions/points/71.5,51.2|71.4,51.1",
     );
+  });
+
+  it("should re-request location and upgrade the route when none is known", async () => {
+    const onRequestLocation = vi.fn().mockResolvedValue({ lat: 51.2, lng: 71.5 });
+    const fakeWin = { closed: false, location: { href: "" } };
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue(fakeWin as unknown as Window);
+    renderCard({ userCoords: null, onRequestLocation });
+
+    await userEvent.click(screen.getByRole("link", { name: /Маршрут/ }));
+
+    expect(onRequestLocation).toHaveBeenCalledOnce();
+    await waitFor(() => expect(fakeWin.location.href).toContain("71.5,51.2"));
+    openSpy.mockRestore();
+  });
+
+  it("should not re-request location when coords are already known", async () => {
+    const onRequestLocation = vi.fn();
+    renderCard({ userCoords: { lat: 51.2, lng: 71.5 }, onRequestLocation });
+    await userEvent.click(screen.getByRole("link", { name: /Маршрут/ }));
+    expect(onRequestLocation).not.toHaveBeenCalled();
   });
 
   it("should render a distance chip when distanceKm is provided", () => {

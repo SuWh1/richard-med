@@ -2,6 +2,9 @@ import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import type { SortKey } from "@/types";
+import { DEFAULT_CITY, getStoredCity } from "@/lib/cityStore";
+
+export { DEFAULT_CITY };
 
 export interface SearchState {
   q: string;
@@ -12,7 +15,6 @@ export interface SearchState {
   includeStale: boolean;
 }
 
-export const DEFAULT_CITY = "Астана";
 const DEFAULT_SORT: SortKey = "best_value";
 const SORTS: SortKey[] = ["best_value", "cheapest", "newest", "nearest"];
 
@@ -20,7 +22,7 @@ export function parseSearchState(params: URLSearchParams): SearchState {
   const sortParam = params.get("sort");
   return {
     q: params.get("q") ?? "",
-    city: params.get("city") ?? DEFAULT_CITY,
+    city: params.get("city") ?? getStoredCity(),
     sort: sortParam && SORTS.includes(sortParam as SortKey) ? (sortParam as SortKey) : DEFAULT_SORT,
     priceMin: params.get("price_min") ?? "",
     priceMax: params.get("price_max") ?? "",

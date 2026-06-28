@@ -18,6 +18,7 @@ const SOURCE_LABELS: Record<string, string> = {
   kdl_olymp: "KDL Olymp",
   doq: "DOQ",
   invitro: "Invitro",
+  helix: "Helix",
 };
 
 export function sourceLabel(name: string): string {
@@ -25,7 +26,7 @@ export function sourceLabel(name: string): string {
 }
 
 export function formatDateTime(iso: string | null): string {
-  if (!iso) return "–";
+  if (!iso) return "";
   return new Date(iso).toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
@@ -44,7 +45,7 @@ export function formatReviewDate(iso: string | null): string {
 }
 
 export function formatDuration(sec: number | null): string {
-  if (sec === null) return "–";
+  if (sec === null) return "";
   if (sec < 60) return `${sec.toFixed(1)} с`;
   return `${Math.floor(sec / 60)} мин ${Math.round(sec % 60)} с`;
 }

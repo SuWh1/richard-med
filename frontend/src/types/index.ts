@@ -154,6 +154,23 @@ export interface CompareResult {
   rows: CompareRow[];
 }
 
+export interface ClinicInsight {
+  clinic_id: number;
+  clinic_name: string;
+  rating: number | null;
+  reviews_count: number | null;
+  summary: string;
+}
+
+export interface CompareInsight {
+  available: boolean;
+  service_name: string;
+  clinics: ClinicInsight[];
+  verdict: string | null;
+  best_clinic_id: number | null;
+  reason: string | null;
+}
+
 export interface SearchParams {
   q: string;
   city?: string;
@@ -164,6 +181,49 @@ export interface SearchParams {
   price_max?: number;
   lat?: number;
   lng?: number;
+}
+
+export interface SavedServiceWatch {
+  id: number;
+  service_id: number;
+  service_name: string;
+  category: string;
+  clinic_id: number | null;
+  clinic_name: string | null;
+  city: string;
+  notify_enabled: boolean;
+  baseline_min_price: number | null;
+  last_seen_min_price: number | null;
+  current_min_price: number | null;
+  clinic_count: number;
+  updated_at: string;
+}
+
+export interface SearchHistoryItem {
+  id: number;
+  q: string;
+  city: string;
+  service_id: number | null;
+  service_name: string | null;
+  result_count: number;
+  created_at: string;
+}
+
+export interface PriceNotification {
+  watch_id: number;
+  service_id: number;
+  service_name: string;
+  city: string;
+  previous_min_price: number;
+  current_min_price: number;
+  delta_kzt: number;
+  delta_pct: number;
+}
+
+export interface CabinetDashboard {
+  saved_services: SavedServiceWatch[];
+  recent_searches: SearchHistoryItem[];
+  notifications: PriceNotification[];
 }
 
 export type RunStatus = "running" | "success" | "partial" | "failed";
@@ -320,4 +380,43 @@ export interface SourcePublic {
   cities: number;
   last_parsed_at: string | null;
   freshness: Freshness | null;
+}
+
+export interface ClinicSummary {
+  id: number;
+  name: string;
+  source_name: string;
+  website_url: string | null;
+  rating: number | null;
+  reviews_count: number;
+  branches_count: number;
+  active_services_count: number;
+  cities: string[];
+}
+
+export interface ClinicListPage {
+  total: number;
+  items: ClinicSummary[];
+}
+
+export interface ClinicListParams {
+  q?: string;
+  city?: string;
+  source?: string;
+  sort?: "name" | "rating" | "services";
+  limit?: number;
+  offset?: number;
+}
+
+export interface ClinicServicesPage {
+  total: number;
+  items: ClinicServiceRow[];
+}
+
+export interface ClinicServicesParams {
+  q?: string;
+  category?: string;
+  include_stale?: boolean;
+  limit?: number;
+  offset?: number;
 }

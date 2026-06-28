@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Check,
@@ -15,7 +15,11 @@ import {
 import { fetchClinic, fetchClinicServices } from "@/lib/api";
 import { type SearchContext, searchCrumb } from "@/lib/breadcrumb";
 import { capitalize, formatPrice, sourceLabel } from "@/lib/format";
+import { type Coords } from "@/lib/geo";
+import { geoRouteHandler } from "@/lib/geoRoute";
 import { twoGisRouteUrl, twoGisSearchUrl } from "@/lib/twoGisRoute";
+import { useUserLocation } from "@/hooks/useUserLocation";
+import { useDebounce } from "@/hooks/useDebounce";
 import type { BranchInfo, ClinicDetail } from "@/types";
 import { ClinicAvatar } from "@/components/ClinicAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -25,14 +29,21 @@ import { AppShell } from "@/components/AppShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClinicCardSkeletonList } from "@/components/ClinicCardSkeleton";
 import { AnimatedList } from "@/components/AnimatedList";
+import { ClinicLocationMap } from "@/components/map/ClinicLocationMap";
+import { BranchesSection } from "@/components/clinic/BranchesSection";
 import { Pager } from "@/components/Pager";
 
 const PAGE_SIZE = 10;
 
-function branchRouteUrl(branch: BranchInfo, clinic: ClinicDetail): string {
+function branchRouteUrl(
+  branch: BranchInfo,
+  clinic: ClinicDetail,
+  origin: Coords | null,
+): string {
   if (branch.lat != null && branch.lng != null) {
     return twoGisRouteUrl({
       dest: { lat: branch.lat, lng: branch.lng },
+      origin,
       city: branch.city,
     });
   }
@@ -42,44 +53,50 @@ function branchRouteUrl(branch: BranchInfo, clinic: ClinicDetail): string {
 
 export function ClinicDetailPage() {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const fromSearch = useLocation().state as SearchContext | null;
   const clinicId = Number(id);
   const valid = Number.isInteger(clinicId) && clinicId > 0;
   const [serviceQuery, setServiceQuery] = useState("");
+  const { coords, requestOnce } = useUserLocation();
 
   const clinicQuery = useQuery({
     queryKey: ["clinic", clinicId],
     queryFn: () => fetchClinic(clinicId),
     enabled: valid,
   });
+  const debouncedServiceQuery = useDebounce(serviceQuery, 300);
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [debouncedServiceQuery]);
+
   const servicesQuery = useQuery({
-    queryKey: ["clinic-services", clinicId],
-    queryFn: () => fetchClinicServices(clinicId),
+    queryKey: ["clinic-services", clinicId, debouncedServiceQuery, page],
+    queryFn: () =>
+      fetchClinicServices(clinicId, {
+        q: debouncedServiceQuery.trim() || undefined,
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+      }),
     enabled: valid,
   });
 
   const clinic = clinicQuery.data;
-  const services = servicesQuery.data ?? [];
-  const branch = clinic?.branches[0];
+  const pageItems = servicesQuery.data?.items ?? [];
+  const servicesTotal = servicesQuery.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(servicesTotal / PAGE_SIZE));
 
-  const filtered = useMemo(
-    () =>
-      services.filter((s) =>
-        s.service_name.toLowerCase().includes(serviceQuery.toLowerCase()),
-      ),
-    [services, serviceQuery],
-  );
-
-  const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [serviceQuery]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const branchParam = Number(searchParams.get("branch"));
+  const branch =
+    (branchParam ? clinic?.branches.find((b) => b.id === branchParam) : undefined) ??
+    clinic?.branches[0];
+  const twoGisHref = clinic
+    ? twoGisSearchUrl({ query: clinic.name, city: branch?.city })
+    : undefined;
 
   return (
     <AppShell
-      city={branch?.city ?? undefined}
       breadcrumb={[
-        { label: "Поиск", href: "/" },
+        { label: "Поиск", href: "/search" },
         ...searchCrumb(fromSearch),
         { label: clinic?.name ?? "Клиника" },
       ]}
@@ -102,13 +119,20 @@ export function ClinicDetailPage() {
                         {clinic.name}
                       </h1>
                       {clinic.rating != null && (
-                        <div className="mb-1.5">
+                        <a
+                          href={twoGisHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Смотреть отзывы в 2ГИС"
+                          className="mb-1.5 inline-flex items-center gap-1 transition-opacity hover:opacity-80"
+                        >
                           <RatingBadge
                             rating={clinic.rating}
                             reviewsCount={clinic.reviews_count}
                             size="md"
                           />
-                        </div>
+                          <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                        </a>
                       )}
                       {branch?.address && (
                         <div className="mb-1 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -142,9 +166,14 @@ export function ClinicDetailPage() {
                   <div className="mt-5 flex flex-wrap gap-3">
                     {branch && (
                       <a
-                        href={branchRouteUrl(branch, clinic)}
+                        href={branchRouteUrl(branch, clinic, coords)}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={geoRouteHandler(
+                          (c) => branchRouteUrl(branch, clinic, c),
+                          coords,
+                          requestOnce,
+                        )}
                         className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary"
                       >
                         <Navigation className="h-4 w-4" /> Маршрут
@@ -165,6 +194,36 @@ export function ClinicDetailPage() {
               </div>
             </div>
 
+            {branch?.lat != null && branch?.lng != null && (
+              <div className="mb-6 h-64 overflow-hidden rounded-2xl border border-border shadow-sm sm:h-80">
+                <ClinicLocationMap
+                  lat={branch.lat}
+                  lng={branch.lng}
+                  name={clinic.name}
+                  address={branch.address}
+                  city={branch.city}
+                  userCoords={coords}
+                  onRequestLocation={requestOnce}
+                />
+              </div>
+            )}
+
+            <BranchesSection
+              branches={clinic.branches}
+              selectedId={branch?.id}
+              userCoords={coords}
+              onRequestLocation={requestOnce}
+              onSelect={(branchId) =>
+                setSearchParams(
+                  (prev) => {
+                    prev.set("branch", String(branchId));
+                    return prev;
+                  },
+                  { replace: true },
+                )
+              }
+            />
+
             <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
               <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-3">
@@ -172,7 +231,7 @@ export function ClinicDetailPage() {
                     Все услуги клиники
                   </h2>
                   <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
-                    {services.length}
+                    {servicesTotal}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 rounded-lg border border-border bg-input-background px-3 py-1.5 sm:ml-auto">
@@ -203,11 +262,11 @@ export function ClinicDetailPage() {
                 </div>
               )}
 
-              {servicesQuery.isSuccess && filtered.length === 0 && (
+              {servicesQuery.isSuccess && pageItems.length === 0 && (
                 <p className="px-5 py-6 text-sm text-muted-foreground">
-                  {services.length === 0
-                    ? "Актуальных цен нет."
-                    : "Ничего не найдено по этому запросу."}
+                  {debouncedServiceQuery
+                    ? "Ничего не найдено по этому запросу."
+                    : "Актуальных цен нет."}
                 </p>
               )}
 
@@ -255,6 +314,7 @@ export function ClinicDetailPage() {
               clinicId={clinic.id}
               rating={clinic.rating}
               reviewsCount={clinic.reviews_count}
+              sourceHref={twoGisHref}
             />
           </>
         )}

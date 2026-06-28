@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import Float, case, func, select
+from sqlalchemy import Float, case, exists, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -11,6 +11,7 @@ from app.models import (
     ClinicServicePrice,
     Service,
 )
+from app.models.catalog import ServiceCategory
 from app.services.search import STALE_DAYS, _freshness
 
 
@@ -39,6 +40,25 @@ class ClinicDetail:
 
 
 @dataclass(frozen=True)
+class ClinicSummary:
+    id: int
+    name: str
+    source_name: str
+    website_url: str | None
+    rating: float | None
+    reviews_count: int
+    branches_count: int
+    active_services_count: int
+    cities: list[str]
+
+
+@dataclass(frozen=True)
+class ClinicListPage:
+    total: int
+    items: list[ClinicSummary]
+
+
+@dataclass(frozen=True)
 class ReviewRow:
     id: int
     author: str | None
@@ -63,6 +83,12 @@ class ClinicServiceRow:
     source_url: str
     city: str | None
     branch_id: int | None
+
+
+@dataclass(frozen=True)
+class ClinicServicesPage:
+    total: int
+    items: list[ClinicServiceRow]
 
 
 @dataclass(frozen=True)
@@ -208,6 +234,182 @@ def clinic_services(
     ]
     rows.sort(key=lambda r: r.price_kzt)
     return rows
+
+
+def clinic_services_page(
+    session: Session,
+    clinic_id: int,
+    *,
+    q: str | None = None,
+    category: str | None = None,
+    include_stale: bool = False,
+    limit: int = 24,
+    offset: int = 0,
+) -> ClinicServicesPage:
+    age = _age_expr()
+    inner = (
+        select(
+            ClinicServicePrice.service_id.label("service_id"),
+            Service.name_ru.label("service_name"),
+            Service.category.label("category"),
+            ClinicServicePrice.price_kzt.label("price_kzt"),
+            ClinicServicePrice.parsed_at.label("parsed_at"),
+            ClinicServicePrice.source_url.label("source_url"),
+            ClinicBranch.city.label("city"),
+            ClinicServicePrice.branch_id.label("branch_id"),
+            age.label("age"),
+        )
+        .join(Service, ClinicServicePrice.service_id == Service.id)
+        .outerjoin(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
+        .where(
+            ClinicServicePrice.clinic_id == clinic_id,
+            ClinicServicePrice.is_active.is_(True),
+        )
+        .order_by(ClinicServicePrice.service_id, ClinicServicePrice.price_kzt)
+        .distinct(ClinicServicePrice.service_id)
+    )
+    if not include_stale:
+        inner = inner.where(age <= STALE_DAYS)
+    if q:
+        inner = inner.where(Service.name_ru.ilike(f"%{q.strip()}%"))
+    if category:
+        try:
+            inner = inner.where(Service.category == ServiceCategory(category))
+        except ValueError:
+            pass
+    sub = inner.subquery()
+
+    total = session.scalar(select(func.count()).select_from(sub))
+    rows = session.execute(
+        select(sub).order_by(sub.c.price_kzt).limit(limit).offset(offset)
+    ).all()
+    items = [
+        ClinicServiceRow(
+            service_id=r.service_id,
+            service_name=r.service_name,
+            category=r.category.value if hasattr(r.category, "value") else r.category,
+            price_kzt=r.price_kzt,
+            parsed_at=r.parsed_at,
+            age_days=int(r.age),
+            freshness=_freshness(int(r.age)),
+            source_url=r.source_url,
+            city=r.city,
+            branch_id=r.branch_id,
+        )
+        for r in rows
+    ]
+    return ClinicServicesPage(total=total or 0, items=items)
+
+
+def list_clinics(
+    session: Session,
+    *,
+    q: str | None = None,
+    city: str | None = None,
+    source: str | None = None,
+    sort: str = "name",
+    limit: int = 50,
+    offset: int = 0,
+) -> ClinicListPage:
+    filters = []
+    if q:
+        filters.append(Clinic.name.ilike(f"%{q.strip()}%"))
+    if source:
+        filters.append(Clinic.source_name == source)
+    if city:
+        filters.append(
+            exists().where(
+                ClinicServicePrice.clinic_id == Clinic.id,
+                ClinicServicePrice.city == city,
+                ClinicServicePrice.is_active.is_(True),
+            )
+        )
+
+    branches_count = (
+        select(func.count(ClinicBranch.id))
+        .where(ClinicBranch.clinic_id == Clinic.id)
+        .scalar_subquery()
+    )
+    services_count = (
+        select(func.count(func.distinct(ClinicServicePrice.service_id)))
+        .where(
+            ClinicServicePrice.clinic_id == Clinic.id,
+            ClinicServicePrice.is_active.is_(True),
+        )
+        .scalar_subquery()
+    )
+    rated = (
+        ClinicBranch.clinic_id == Clinic.id,
+        ClinicBranch.rating.is_not(None),
+        ClinicBranch.reviews_count.is_not(None),
+    )
+    rating = (
+        select(
+            func.sum(ClinicBranch.rating * ClinicBranch.reviews_count)
+            / func.nullif(func.sum(ClinicBranch.reviews_count), 0)
+        )
+        .where(*rated)
+        .scalar_subquery()
+    )
+    reviews_count = (
+        select(func.coalesce(func.sum(ClinicBranch.reviews_count), 0))
+        .where(*rated)
+        .scalar_subquery()
+    )
+
+    total = session.scalar(
+        select(func.count()).select_from(Clinic).where(*filters)
+    )
+
+    stmt = select(
+        Clinic.id,
+        Clinic.name,
+        Clinic.source_name,
+        Clinic.website_url,
+        rating.label("rating"),
+        reviews_count.label("reviews_count"),
+        branches_count.label("branches_count"),
+        services_count.label("services_count"),
+    ).where(*filters)
+
+    if sort == "rating":
+        stmt = stmt.order_by(rating.desc().nulls_last(), Clinic.name)
+    elif sort == "services":
+        stmt = stmt.order_by(services_count.desc(), Clinic.name)
+    else:
+        stmt = stmt.order_by(Clinic.name)
+
+    rows = session.execute(stmt.limit(limit).offset(offset)).all()
+    ids = [r.id for r in rows]
+
+    cities_by_clinic: dict[int, set[str]] = {}
+    if ids:
+        for clinic_id, city_name in session.execute(
+            select(ClinicServicePrice.clinic_id, ClinicServicePrice.city)
+            .where(
+                ClinicServicePrice.clinic_id.in_(ids),
+                ClinicServicePrice.is_active.is_(True),
+            )
+            .distinct()
+        ):
+            if city_name:
+                cities_by_clinic.setdefault(clinic_id, set()).add(city_name)
+
+    items = [
+        ClinicSummary(
+            id=r.id,
+            name=r.name,
+            source_name=r.source_name,
+            website_url=r.website_url,
+            rating=round(r.rating, 2) if r.rating is not None else None,
+            reviews_count=int(r.reviews_count or 0),
+            branches_count=int(r.branches_count or 0),
+            active_services_count=int(r.services_count or 0),
+            cities=sorted(cities_by_clinic.get(r.id, set())),
+        )
+        for r in rows
+    ]
+    return ClinicListPage(total=total or 0, items=items)
 
 
 def compare(

@@ -1,12 +1,17 @@
 import type {
   AnalyticsOverview,
   AnalyticsParams,
+  CabinetDashboard,
   CatalogPage,
   CatalogParams,
   CityInfo,
   ClinicDetail,
+  ClinicListPage,
+  ClinicListParams,
   ClinicReview,
-  ClinicServiceRow,
+  ClinicServicesPage,
+  ClinicServicesParams,
+  CompareInsight,
   CompareResult,
   MapPin,
   ParseRunDetail,
@@ -15,7 +20,9 @@ import type {
   RunTrigger,
   SearchParams,
   SearchResponse,
+  SavedServiceWatch,
   ServicePriceStat,
+  SearchHistoryItem,
   SourcePublic,
   SourceHealth,
   Suggestion,
@@ -27,6 +34,12 @@ import { authHeader } from "./auth-client";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001/api/v1";
 
+// ngrok's free tier serves an HTML interstitial to browser requests; this header
+// skips it so fetch() gets JSON, not the warning page. No-op for non-ngrok hosts.
+const NGROK_HEADERS: Record<string, string> = BASE_URL.includes("ngrok")
+  ? { "ngrok-skip-browser-warning": "true" }
+  : {};
+
 async function getJson<T>(path: string, params: Record<string, unknown>): Promise<T> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -34,13 +47,35 @@ async function getJson<T>(path: string, params: Record<string, unknown>): Promis
       query.set(key, String(value));
     }
   }
-  // Admin endpoints are JWT-protected on the backend.
-  const headers = path.startsWith("/admin") ? authHeader() : undefined;
+  // Admin and cabinet endpoints are JWT-protected on the backend.
+  const auth =
+    path.startsWith("/admin") || path.startsWith("/cabinet") ? authHeader() : {};
+  const headers = { ...NGROK_HEADERS, ...auth };
   const response = await fetch(`${BASE_URL}${path}?${query.toString()}`, { headers });
   if (!response.ok) {
     throw new Error(`Запрос не выполнен (${response.status})`);
   }
   return response.json() as Promise<T>;
+}
+
+async function sendJson<T>(
+  method: "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      ...NGROK_HEADERS,
+      ...authHeader(),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Запрос не выполнен (${response.status})`);
+  }
+  return (response.status === 204 ? undefined : response.json()) as Promise<T>;
 }
 
 export function fetchSuggestions(q: string, category?: string): Promise<Suggestion[]> {
@@ -55,6 +90,50 @@ export function fetchSearch(params: SearchParams): Promise<SearchResponse> {
   return getJson<SearchResponse>("/search", { ...params });
 }
 
+export function fetchCabinet(): Promise<CabinetDashboard> {
+  return getJson<CabinetDashboard>("/cabinet", {});
+}
+
+export function saveCabinetService(
+  serviceId: number,
+  city: string,
+  clinicId: number | null = null,
+  notifyEnabled = true,
+): Promise<SavedServiceWatch> {
+  return sendJson("POST", "/cabinet/saved-services", {
+    service_id: serviceId,
+    clinic_id: clinicId,
+    city,
+    notify_enabled: notifyEnabled,
+  });
+}
+
+export function toggleCabinetService(
+  watchId: number,
+  notifyEnabled: boolean,
+): Promise<SavedServiceWatch> {
+  return sendJson("PATCH", "/cabinet/saved-services/" + watchId, {
+    notify_enabled: notifyEnabled,
+  });
+}
+
+export function markCabinetServiceSeen(watchId: number): Promise<SavedServiceWatch> {
+  return sendJson("POST", `/cabinet/saved-services/${watchId}/mark-seen`);
+}
+
+export function deleteCabinetService(watchId: number): Promise<void> {
+  return sendJson<void>("DELETE", `/cabinet/saved-services/${watchId}`);
+}
+
+export function recordCabinetSearch(params: {
+  q: string;
+  city: string;
+  service_id?: number | null;
+  result_count: number;
+}): Promise<SearchHistoryItem> {
+  return sendJson("POST", "/cabinet/search-history", params);
+}
+
 export function fetchFeatured(limit = 6): Promise<PriceCard[]> {
   return getJson<PriceCard[]>("/search/featured", { limit });
 }
@@ -67,12 +146,19 @@ export function fetchMapPins(
   return getJson<MapPin[]>("/search/map", { service_id: serviceId, city, bbox });
 }
 
+export function fetchClinics(params: ClinicListParams = {}): Promise<ClinicListPage> {
+  return getJson<ClinicListPage>("/clinics", { ...params });
+}
+
 export function fetchClinic(clinicId: number): Promise<ClinicDetail> {
   return getJson<ClinicDetail>(`/clinics/${clinicId}`, {});
 }
 
-export function fetchClinicServices(clinicId: number): Promise<ClinicServiceRow[]> {
-  return getJson<ClinicServiceRow[]>(`/clinics/${clinicId}/services`, {});
+export function fetchClinicServices(
+  clinicId: number,
+  params: ClinicServicesParams = {},
+): Promise<ClinicServicesPage> {
+  return getJson<ClinicServicesPage>(`/clinics/${clinicId}/services`, { ...params });
 }
 
 export function fetchClinicReviews(
@@ -92,6 +178,16 @@ export function fetchCompare(
     service_id: serviceId,
     clinic_ids: clinicIds.join(","),
     city,
+  });
+}
+
+export function fetchCompareInsight(
+  serviceId: number,
+  clinicIds: number[],
+): Promise<CompareInsight> {
+  return getJson<CompareInsight>("/search/compare/insight", {
+    service_id: serviceId,
+    clinic_ids: clinicIds.join(","),
   });
 }
 
@@ -134,7 +230,7 @@ export async function triggerRun(source: string | null, city: string): Promise<R
   if (source) query.set("source", source);
   const response = await fetch(`${BASE_URL}/admin/parsers/run?${query.toString()}`, {
     method: "POST",
-    headers: authHeader(),
+    headers: { ...NGROK_HEADERS, ...authHeader() },
   });
   if (!response.ok) {
     throw new Error(`Не удалось запустить парсер (${response.status})`);

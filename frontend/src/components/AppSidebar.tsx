@@ -1,6 +1,7 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
+  Building2,
   LayoutGrid,
   LogIn,
   LogOut,
@@ -11,6 +12,8 @@ import {
 
 import { logout } from "@/lib/auth-client";
 import { useAuth } from "@/lib/useAuth";
+import { useCity } from "@/lib/cityStore";
+import { ClinicAvatar } from "@/components/ClinicAvatar";
 import {
   Sidebar,
   SidebarContent,
@@ -23,12 +26,36 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-const NAV = [
-  { title: "Поиск", url: "/search", icon: Search },
-  { title: "Аналитика", url: "/analytics", icon: BarChart3 },
-  { title: "Кабинет", url: "/cabinet", icon: User },
+interface NavItem {
+  title: string;
+  url: string;
+  icon: typeof Search;
+}
+interface NavSection {
+  label: string;
+  items: NavItem[];
+  adminOnly?: boolean;
+}
+
+const SECTIONS: NavSection[] = [
+  {
+    label: "Сервис",
+    items: [
+      { title: "Поиск", url: "/search", icon: Search },
+      { title: "Клиники", url: "/clinics", icon: Building2 },
+      { title: "Аналитика", url: "/analytics", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Аккаунт",
+    items: [{ title: "Кабинет", url: "/cabinet", icon: User }],
+  },
+  {
+    label: "Администрирование",
+    adminOnly: true,
+    items: [{ title: "Source Health", url: "/dashboard", icon: LayoutGrid }],
+  },
 ];
-const ADMIN_NAV = [{ title: "Source Health", url: "/dashboard", icon: LayoutGrid }];
 
 function isActive(pathname: string, url: string): boolean {
   const route = url.split("#")[0] || "/";
@@ -36,13 +63,13 @@ function isActive(pathname: string, url: string): boolean {
   return pathname.startsWith(route);
 }
 
-export function AppSidebar({ city = "Астана" }: { city?: string }) {
+export function AppSidebar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { isAdmin, isAuthenticated, user } = useAuth();
+  const { city } = useCity();
 
-  // Source Health is admin-only — non-admins never even see the link.
-  const items = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
+  const sections = SECTIONS.filter((s) => !s.adminOnly || isAdmin);
 
   const onLogout = () => {
     logout();
@@ -71,25 +98,27 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Навигация</SidebarGroupLabel>
-          <SidebarMenu>
-            {items.map((item) => (
-              <SidebarMenuItem key={item.url}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive(pathname, item.url)}
-                  tooltip={item.title}
-                >
-                  <NavLink to={item.url}>
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
+        {sections.map((section) => (
+          <SidebarGroup key={section.label}>
+            <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+            <SidebarMenu>
+              {section.items.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(pathname, item.url)}
+                    tooltip={item.title}
+                  >
+                    <NavLink to={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter>
@@ -103,9 +132,7 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
           {isAuthenticated ? (
             <SidebarMenuItem>
               <div className="mt-1 flex items-center gap-2 rounded-md border border-sidebar-border px-2 py-1.5">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold uppercase text-primary">
-                  {(user?.name || user?.email || "?").charAt(0)}
-                </span>
+                <ClinicAvatar name={user?.name || user?.email || "?"} size="sm" />
                 <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                   {user?.name || user?.email}
                 </span>

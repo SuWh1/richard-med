@@ -1,10 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Map as MapIcon, Search as SearchIcon } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Map as MapIcon,
+  Search as SearchIcon,
+} from "lucide-react";
 
 import type { PriceCard as PriceCardData, Suggestion } from "@/types";
-import { fetchCities, fetchMapPins, fetchSearch, fetchSuggestions } from "@/lib/api";
+import {
+  deleteCabinetService,
+  fetchCabinet,
+  fetchCities,
+  fetchMapPins,
+  fetchSearch,
+  fetchSuggestions,
+  recordCabinetSearch,
+  saveCabinetService,
+} from "@/lib/api";
 import { clinicPoints } from "@/lib/clinicPoints";
 import {
   DEFAULT_CITY,
@@ -13,8 +25,10 @@ import {
 } from "@/hooks/useSearchState";
 import { dedupePinsByLocation, medianPrice } from "@/lib/results";
 import { distanceKm, nearestCity, sortByNearest } from "@/lib/geo";
+import { hasStoredCity, setStoredCity } from "@/lib/cityStore";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useUserLocation } from "@/hooks/useUserLocation";
+import { useAuth } from "@/lib/useAuth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -30,6 +44,9 @@ import { CompareTray } from "@/components/CompareTray";
 import { ClinicMap } from "@/components/map/ClinicMap";
 import { useCompareSelection } from "@/hooks/useCompareSelection";
 import { buildCompareHref } from "@/lib/compare";
+import { Pager } from "@/components/Pager";
+
+const PAGE_SIZE = 12;
 
 function toNum(value: string): number | undefined {
   if (!value) return undefined;
@@ -40,14 +57,18 @@ function toNum(value: string): number | undefined {
 export function ResultsPage() {
   const { state, update } = useSearchState();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [rawParams] = useSearchParams();
-  const { coords, request: requestLocation } = useUserLocation();
+  const { coords, request: requestLocation, requestOnce } = useUserLocation();
+  const { isAuthenticated } = useAuth();
   const appliedGeoCity = useRef(false);
+  const recordedHistoryKey = useRef<string | null>(null);
 
   const [input, setInput] = useState(state.q);
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
   const [passport, setPassport] = useState<PriceCardData | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
   const debounced = useDebounce(input, 250);
   const listRef = useRef<HTMLDivElement>(null);
@@ -68,9 +89,12 @@ export function ResultsPage() {
   useEffect(() => {
     if (appliedGeoCity.current || !coords || cities.length === 0) return;
     appliedGeoCity.current = true;
-    if (rawParams.get("city")) return;
+    if (rawParams.get("city") || hasStoredCity()) return;
     const near = nearestCity(coords, cities);
-    if (near && near.name !== state.city) update({ city: near.name }, { replace: true });
+    if (near && near.name !== state.city) {
+      setStoredCity(near.name);
+      update({ city: near.name }, { replace: true });
+    }
   }, [coords, cities, rawParams, state.city, update]);
 
   const suggestionsQuery = useQuery({
@@ -117,6 +141,10 @@ export function ResultsPage() {
     const base = searchQuery.data?.cards ?? [];
     return state.sort === "nearest" && coords ? sortByNearest(base, coords) : base;
   }, [searchQuery.data, state.sort, coords]);
+  const totalPoints = useMemo(
+    () => cards.reduce((sum, c) => sum + Math.max(1, c.branch_count), 0),
+    [cards],
+  );
   const median = useMemo(() => medianPrice(cards.map((c) => c.price_kzt)), [cards]);
   const cheapestPrice = useMemo(
     () => (cards.length ? Math.min(...cards.map((c) => c.price_kzt)) : null),
@@ -124,6 +152,86 @@ export function ResultsPage() {
   );
   const resolved = searchQuery.data?.resolved_service ?? null;
   const resolvedId = resolved?.id ?? null;
+
+  const cabinetQuery = useQuery({
+    queryKey: ["cabinet"],
+    queryFn: fetchCabinet,
+    enabled: isAuthenticated,
+  });
+  const savedByClinic = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const watch of cabinetQuery.data?.saved_services ?? []) {
+      if (
+        watch.service_id === resolvedId &&
+        watch.city === state.city &&
+        watch.clinic_id != null
+      ) {
+        map.set(watch.clinic_id, watch.id);
+      }
+    }
+    return map;
+  }, [cabinetQuery.data, resolvedId, state.city]);
+
+  const saveMutation = useMutation({
+    mutationFn: (clinicId: number) =>
+      saveCabinetService(resolvedId as number, state.city, clinicId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cabinet"] }),
+  });
+  const deleteWatchMutation = useMutation({
+    mutationFn: (watchId: number) => deleteCabinetService(watchId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cabinet"] }),
+  });
+
+  const toggleSave = (clinicId: number) => {
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+    const watchId = savedByClinic.get(clinicId);
+    if (watchId !== undefined) deleteWatchMutation.mutate(watchId);
+    else saveMutation.mutate(clinicId);
+  };
+  const historyMutation = useMutation({
+    mutationFn: (params: {
+      q: string;
+      city: string;
+      service_id?: number | null;
+      result_count: number;
+    }) => recordCabinetSearch(params),
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated || !searchQuery.isSuccess || !isSearching) return;
+    const key = [
+      state.q.trim(),
+      state.city,
+      resolvedId ?? "",
+      searchQuery.data.count,
+    ].join("|");
+    if (recordedHistoryKey.current === key) return;
+    recordedHistoryKey.current = key;
+    historyMutation.mutate({
+      q: state.q.trim(),
+      city: state.city,
+      service_id: resolvedId,
+      result_count: searchQuery.data.count,
+    });
+  }, [
+    historyMutation,
+    isAuthenticated,
+    isSearching,
+    resolvedId,
+    searchQuery.data,
+    searchQuery.isSuccess,
+    state.city,
+    state.q,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(cards.length / PAGE_SIZE));
+  const pageItems = cards.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => {
+    setPage(1);
+  }, [state.q, state.city, state.sort, state.includeStale, state.priceMin, state.priceMax]);
 
   const compare = useCompareSelection(resolvedId);
   const compareClinics = useMemo(() => {
@@ -158,11 +266,20 @@ export function ResultsPage() {
 
   useEffect(() => {
     if (!scrollOnSelect.current || selectedClinicId == null) return;
+    // A map pin may point to a clinic on another page — jump there first, then scroll.
+    const idx = cards.findIndex((c) => c.clinic_id === selectedClinicId);
+    if (idx >= 0) {
+      const target = Math.floor(idx / PAGE_SIZE) + 1;
+      if (target !== page) {
+        setPage(target);
+        return;
+      }
+    }
     scrollOnSelect.current = false;
     listRef.current
       ?.querySelector(`[data-clinic-id="${selectedClinicId}"]`)
       ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [selectedClinicId]);
+  }, [selectedClinicId, cards, page]);
 
   const runSearch = (q: string) => {
     if (q.trim().length < 2) return;
@@ -174,6 +291,7 @@ export function ResultsPage() {
   const patch = (p: Partial<SearchState>) => {
     setSelectedBranchId(null);
     if (p.sort === "nearest" && !coords) requestLocation();
+    if (p.city) setStoredCity(p.city);
     update(p, { replace: true });
   };
   const resetFilters = () =>
@@ -182,6 +300,15 @@ export function ResultsPage() {
   const selectFromMap = (branchId: number | null) => {
     scrollOnSelect.current = true;
     setSelectedBranchId(branchId);
+  };
+
+  // Open a clinic on the branch the user actually picked (the clinic has branches in
+  // many cities — without this the detail page falls back to its first, wrong-city one).
+  const openClinic = (clinicId: number, branchId: number | null) => {
+    const suffix = branchId != null ? `?branch=${branchId}` : "";
+    navigate(`/clinics/${clinicId}${suffix}`, {
+      state: { q: state.q, city: state.city, label: resolved?.name_ru },
+    });
   };
 
   const searchBar = (
@@ -194,6 +321,7 @@ export function ResultsPage() {
       onPick={pickSuggestion}
     />
   );
+
 
   const firstCardPoint = useMemo<[number, number] | null>(() => {
     const first = cards.find((c) => c.lat != null && c.lng != null);
@@ -210,13 +338,13 @@ export function ResultsPage() {
         median={median}
         userCoords={coords}
         focusPoint={overlay ? firstCardPoint : null}
+        onRequestLocation={requestOnce}
       />
     </div>
   );
 
   return (
     <AppShell
-      city={state.city}
       breadcrumb={[
         { label: "Поиск", href: "/search" },
         { label: resolved?.name_ru ?? "Результаты" },
@@ -229,6 +357,7 @@ export function ResultsPage() {
         onPatch={patch}
         onReset={resetFilters}
         count={searchQuery.data?.count ?? cards.length}
+        pointsCount={totalPoints}
       />
 
       <div className="mx-auto flex w-full max-w-[1400px] flex-1">
@@ -237,7 +366,9 @@ export function ResultsPage() {
           className={cn(
             "w-full p-4 lg:p-5",
             hasMap && "lg:w-[58%]",
+            // The compare tray is fixed on every viewport; the map FAB is mobile-only.
             compareClinics.length > 0 && "pb-24",
+            hasMap && compareClinics.length === 0 && "pb-24 lg:pb-5",
           )}
         >
           {!isSearching && (
@@ -276,7 +407,7 @@ export function ResultsPage() {
           )}
 
           <AnimatedList className="space-y-3">
-            {cards.map((card) => (
+            {pageItems.map((card) => (
               <div
                 key={`${card.price_id}-${card.branch_id ?? "c"}`}
                 data-clinic-id={card.clinic_id}
@@ -290,13 +421,15 @@ export function ResultsPage() {
                   distanceKm={coords ? distanceKm(coords, card) : null}
                   points={clinicPoints(pins, card.clinic_id, coords)}
                   onPointHover={(branchId) => setSelectedBranchId(branchId)}
+                  onPointOpen={(branchId) => openClinic(card.clinic_id, branchId)}
+                  onRequestLocation={requestOnce}
+                  isSaved={savedByClinic.has(card.clinic_id)}
+                  onSave={
+                    resolvedId !== null ? () => toggleSave(card.clinic_id) : undefined
+                  }
                   onHover={() => setSelectedBranchId(card.branch_id)}
                   onPassport={() => setPassport(card)}
-                  onDetail={() =>
-                    navigate(`/clinics/${card.clinic_id}`, {
-                      state: { q: state.q, city: state.city, label: resolved?.name_ru },
-                    })
-                  }
+                  onDetail={() => openClinic(card.clinic_id, card.branch_id)}
                   inCompare={compare.isSelected(card.clinic_id)}
                   onCompare={
                     compare.isSelected(card.clinic_id) || !compare.isFull
@@ -307,6 +440,19 @@ export function ResultsPage() {
               </div>
             ))}
           </AnimatedList>
+
+          {totalPages > 1 && (
+            <div className="mt-5">
+              <Pager
+                page={page}
+                totalPages={totalPages}
+                onPage={(p) => {
+                  setPage(p);
+                  listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {hasMap && (

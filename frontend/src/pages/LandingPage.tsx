@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Clock, MapPin, Shield } from "lucide-react";
@@ -7,7 +7,8 @@ import type { Suggestion } from "@/types";
 import { fetchCities, fetchSuggestions } from "@/lib/api";
 import { POPULAR_SERVICES } from "@/lib/constants";
 import { geoCityFor } from "@/lib/geo";
-import { DEFAULT_CITY, searchHref } from "@/hooks/useSearchState";
+import { searchHref } from "@/hooks/useSearchState";
+import { hasStoredCity, useCity } from "@/lib/cityStore";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { useAuth } from "@/lib/useAuth";
@@ -84,7 +85,7 @@ export function LandingPage() {
     () => buildNavItems({ isAuthenticated, isAdmin }),
     [isAuthenticated, isAdmin],
   );
-  const [city, setCity] = useState(DEFAULT_CITY);
+  const { city, setCity } = useCity();
   const [input, setInput] = useState("");
   const debounced = useDebounce(input, 250);
 
@@ -93,17 +94,11 @@ export function LandingPage() {
   const cityNames = cities.length ? cities.map((c) => c.name) : ["Астана", "Алматы"];
 
   const { coords } = useUserLocation();
-  const cityTouched = useRef(false);
-  const pickCity = (next: string) => {
-    cityTouched.current = true;
-    setCity(next);
-  };
-
   useEffect(() => {
-    if (cityTouched.current) return;
+    if (hasStoredCity()) return;
     const near = geoCityFor(coords, cities, city);
     if (near) setCity(near);
-  }, [coords, cities, city]);
+  }, [coords, cities, city, setCity]);
 
   const suggestionsQuery = useQuery({
     queryKey: ["suggestions", debounced],
@@ -116,7 +111,7 @@ export function LandingPage() {
   };
 
   const cityControl = (
-    <Select value={city} onValueChange={pickCity}>
+    <Select value={city} onValueChange={setCity}>
       <SelectTrigger
         size="sm"
         className="h-8 w-auto max-w-[160px] gap-1 rounded-full border-transparent bg-secondary/60 px-2.5 text-muted-foreground hover:bg-secondary [&>span]:truncate"
