@@ -64,7 +64,7 @@ def test_should_accept_run_trigger_for_known_source(monkeypatch):
     # Stub the background worker so the test never performs a live fetch.
     calls = []
     monkeypatch.setattr(
-        "app.api.v1.endpoints.admin._run_sources",
+        "app.api.v1.endpoints.admin.run_sources",
         lambda sources, city: calls.append((sources, city)),
     )
     resp = client.post(
@@ -82,7 +82,7 @@ def test_should_expand_all_cities_sentinel_on_trigger(monkeypatch):
 
     calls = []
     monkeypatch.setattr(
-        "app.api.v1.endpoints.admin._run_sources",
+        "app.api.v1.endpoints.admin.run_sources",
         lambda sources, cities: calls.append((sources, cities)),
     )
     resp = client.post(
@@ -93,24 +93,23 @@ def test_should_expand_all_cities_sentinel_on_trigger(monkeypatch):
 
 
 def test_should_grow_catalog_and_reparse_after_running_sources(monkeypatch):
-    from app.api.v1.endpoints import admin as admin_ep
+    from app.services import parse_runner as pr
 
     calls = []
     monkeypatch.setattr(
-        admin_ep,
-        "run_source",
-        lambda session, source, city, **kw: calls.append(("run", source)),
+        pr, "run_source", lambda session, source, city, **kw: calls.append(("run", source))
     )
     monkeypatch.setattr(
-        admin_ep,
+        pr,
         "grow_catalog",
         lambda session, **kw: calls.append(("grow", kw.get("verifier") is not None))
         or {"added": 0, "aliased": 0, "skipped": 0, "deferred": 0},
     )
-    monkeypatch.setattr(admin_ep, "get_verifier", lambda: None)
-    monkeypatch.setattr(admin_ep, "get_embedder", lambda: None)
+    monkeypatch.setattr(pr, "get_verifier", lambda: None)
+    monkeypatch.setattr(pr, "get_embedder", lambda: None)
+    monkeypatch.setattr(pr, "refresh_reviews", lambda session, **kw: None)
 
-    admin_ep._run_sources(["kdl_olymp"], ["Астана"])
+    assert pr.run_sources(["kdl_olymp"], ["Астана"]) is True
 
     # Source runs, then catalog is grown, then the source is re-parsed so new entries match.
     assert calls == [

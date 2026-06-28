@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     YANDEX_GEOCODER_API_KEY: str = ""
     YANDEX_GEOCODER_URL: str = "https://geocode-maps.yandex.ru/v1"
 
+    # Nightly parser cron (all sources, every city) — off-peak. Opt-in so it never
+    # fires during a demo; flip PARSER_CRON_ENABLED=true in prod to activate.
+    PARSER_CRON_ENABLED: bool = False
+    PARSER_CRON_HOUR: int = 3
+    PARSER_CRON_MINUTE: int = 0
+    PARSER_CRON_TIMEZONE: str = "Asia/Almaty"
+
     # 2GIS ratings/reviews (offline only — never called in the user/search path).
     # Step A (firm-id discovery) runs via the Node browser collector; Step B (reviews
     # refresh) hits the public reviews API below with a stable firm_id, no browser.
