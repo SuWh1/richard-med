@@ -12,7 +12,13 @@ run separately so this stays key-free and fast:
 from app.core.cities import CITIES
 from app.db.session import SessionLocal
 from app.scrapers.registry import available_sources
-from app.scripts import embed_services, expand_catalog, import_branches, import_catalog
+from app.scripts import (
+    embed_services,
+    expand_catalog,
+    import_branches,
+    import_catalog,
+    load_2gis_reviews,
+)
 from app.services.embeddings import get_embedder
 from app.services.pipeline import run_source
 
@@ -50,6 +56,9 @@ def main() -> None:
 
     print("6/6 importing clinic branches (with coordinates)…")
     import_branches.main()
+
+    print("seeding 2GIS ratings + reviews…")
+    load_2gis_reviews.main()
 
     print("setup complete.")
 

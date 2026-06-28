@@ -64,6 +64,8 @@ def search_services(
     include_stale: bool = False,
     price_min: int | None = Query(None, ge=0),
     price_max: int | None = Query(None, ge=0),
+    lat: float | None = Query(None, ge=-90, le=90),
+    lng: float | None = Query(None, ge=-180, le=180),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     def _resolve_and_price() -> tuple:
@@ -77,6 +79,8 @@ def search_services(
                 include_stale=include_stale,
                 price_min=price_min,
                 price_max=price_max,
+                lat=lat,
+                lng=lng,
             )
             if found is not None
             else []
@@ -114,9 +118,10 @@ def map_prices(
 def compare_clinics(
     service_id: int = Query(..., ge=1),
     clinic_ids: str = Query(..., description="comma-separated clinic ids"),
+    city: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> CompareResult:
-    result = clinics.compare(db, service_id, _parse_clinic_ids(clinic_ids))
+    result = clinics.compare(db, service_id, _parse_clinic_ids(clinic_ids), city=city)
     if result is None:
         raise HTTPException(status_code=404, detail="Service not found")
     return result

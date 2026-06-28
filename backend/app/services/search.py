@@ -63,6 +63,9 @@ class PriceCard:
     content_hash: str | None
     match_confidence: float
     match_method: str | None
+    rating: float | None
+    reviews_count: int | None
+    branch_count: int
 
 
 @dataclass(frozen=True)
@@ -297,6 +300,13 @@ def resolve_query(
     return None, suggestions
 
 
+def _nearest_point(points, lat: float | None, lng: float | None):
+    """The branch nearest the user, or a deterministic one when location is unknown."""
+    if lat is None or lng is None:
+        return min(points, key=lambda b: b.id)
+    return min(points, key=lambda b: (b.lat - lat) ** 2 + (b.lng - lng) ** 2)
+
+
 def prices_for_service(
     session: Session,
     service_id: int,
@@ -306,6 +316,8 @@ def prices_for_service(
     include_stale: bool = False,
     price_min: int | None = None,
     price_max: int | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
 ) -> list[PriceCard]:
     now = datetime.now(UTC)
     age_days = func.floor(
@@ -339,10 +351,33 @@ def prices_for_service(
     if not include_stale:
         stmt = stmt.where(age_days <= STALE_DAYS)
 
-    cards = [
-        _build_card(price, clinic, branch, service, metadata, int(age))
-        for price, clinic, branch, service, metadata, age in session.execute(stmt)
-    ]
+    cards: list[PriceCard] = []
+    for price, clinic, branch, service, metadata, age in session.execute(stmt):
+        if branch is not None:
+            cards.append(_build_card(price, clinic, branch, service, metadata, int(age)))
+            continue
+        # City-wide price (no branch): one card per clinic, bound to its nearest collection
+        # point so the card carries real coords for distance, routing, and list<->map sync.
+        points = session.scalars(
+            select(ClinicBranch).where(
+                ClinicBranch.clinic_id == clinic.id,
+                ClinicBranch.city == (city or price.city),
+                ClinicBranch.lat.is_not(None),
+                ClinicBranch.lng.is_not(None),
+            )
+        ).all()
+        if not points:
+            cards.append(
+                _build_card(price, clinic, None, service, metadata, int(age), branch_count=0)
+            )
+            continue
+        chosen = _nearest_point(points, lat, lng)
+        cards.append(
+            _build_card(
+                price, clinic, chosen, service, metadata, int(age),
+                branch_count=len(points),
+            )
+        )
     return _sort_cards(cards, sort)
 
 
@@ -358,6 +393,7 @@ def _build_card(
     service: Service,
     metadata: dict | None,
     age_days: int,
+    branch_count: int = 1,
 ) -> PriceCard:
     return PriceCard(
         price_id=price.id,
@@ -382,6 +418,9 @@ def _build_card(
         content_hash=price.content_hash,
         match_confidence=price.match_confidence,
         match_method=price.match_method,
+        rating=branch.rating if branch else None,
+        reviews_count=branch.reviews_count if branch else None,
+        branch_count=branch_count,
     )
 
 

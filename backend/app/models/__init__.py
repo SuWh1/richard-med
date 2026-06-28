@@ -1,6 +1,6 @@
 from app.models.auth import User
 from app.models.catalog import Service, ServiceAlias, ServiceCategory
-from app.models.clinics import Clinic, ClinicBranch
+from app.models.clinics import Clinic, ClinicBranch, ClinicReview
 from app.models.prices import (
     ClinicServicePrice,
     PriceHistory,
@@ -16,6 +16,7 @@ __all__ = [
     "ServiceCategory",
     "Clinic",
     "ClinicBranch",
+    "ClinicReview",
     "ClinicServicePrice",
     "PriceHistory",
     "RawDocument",

@@ -39,6 +39,9 @@ class PriceCard(BaseModel):
     content_hash: str | None
     match_confidence: float
     match_method: str | None
+    rating: float | None = None
+    reviews_count: int | None = None
+    branch_count: int = 1
 
 
 class SearchResponse(BaseModel):

@@ -1,12 +1,97 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.main import app
-from app.models import Clinic, ClinicServicePrice, Service, ServiceCategory
+from app.models import (
+    Clinic,
+    ClinicBranch,
+    ClinicServicePrice,
+    Service,
+    ServiceCategory,
+)
 from app.services import search
 
 client = TestClient(app)
+
+
+def _unseeded_service_id(session) -> int:
+    return session.scalars(
+        select(Service.id)
+        .outerjoin(ClinicServicePrice, ClinicServicePrice.service_id == Service.id)
+        .where(ClinicServicePrice.id.is_(None))
+        .limit(1)
+    ).one()
+
+
+def _city_price(session, service_id, *, branches, city="Алматы", price=5000):
+    """A city-wide price (branch_id NULL) for a clinic with N geocoded branches."""
+    clinic = Clinic(name=f"Chain {price}", source_name="test_fanout")
+    session.add(clinic)
+    session.flush()
+    for lat, lng, addr in branches:
+        session.add(
+            ClinicBranch(clinic_id=clinic.id, city=city, address=addr, lat=lat, lng=lng)
+        )
+    session.add(
+        ClinicServicePrice(
+            clinic_id=clinic.id,
+            branch_id=None,
+            service_id=service_id,
+            city=city,
+            price_kzt=price,
+            source_url="https://example.kz/x",
+            parsed_at=datetime.now(UTC) - timedelta(days=1),
+            is_active=True,
+            match_confidence=1.0,
+        )
+    )
+    session.flush()
+    return clinic
+
+
+def test_should_collapse_city_wide_price_to_one_card_per_clinic(db_session):
+    sid = _unseeded_service_id(db_session)
+    _city_price(
+        db_session,
+        sid,
+        branches=[(43.20, 76.90, "ул. A1"), (43.25, 76.95, "ул. A2")],
+    )
+
+    cards = search.prices_for_service(db_session, sid, city="Алматы")
+
+    assert len(cards) == 1
+    assert cards[0].branch_count == 2
+    assert cards[0].branch_id is not None and cards[0].lat is not None
+    assert cards[0].price_kzt == 5000
+
+
+def test_should_bind_clinic_card_to_branch_nearest_to_user(db_session):
+    sid = _unseeded_service_id(db_session)
+    _city_price(
+        db_session,
+        sid,
+        branches=[(43.20, 76.90, "ул. A1"), (43.25, 76.95, "ул. A2")],
+    )
+
+    cards = search.prices_for_service(
+        db_session, sid, city="Алматы", lat=43.249, lng=76.949
+    )
+
+    assert len(cards) == 1
+    assert cards[0].address == "ул. A2"
+
+
+def test_should_keep_one_card_when_clinic_has_no_geocoded_branch(db_session):
+    sid = _unseeded_service_id(db_session)
+    _city_price(db_session, sid, branches=[])
+
+    cards = search.prices_for_service(db_session, sid, city="Алматы")
+
+    assert len(cards) == 1
+    assert cards[0].branch_id is None
+    assert cards[0].branch_count == 0
 
 
 def test_should_exclude_quarantined_services_from_autocomplete(db_session):
@@ -272,3 +357,41 @@ def test_should_resolve_to_most_priced_duplicate(db_session):
 
     assert resolved is not None
     assert resolved.id == s_many.id  # canonicalize to the sibling that has prices
+
+
+def test_should_carry_branch_rating_onto_search_card():
+    from types import SimpleNamespace
+
+    price = SimpleNamespace(
+        id=1, price_kzt=1880, duration_min=None, duration_max=None,
+        parsed_at=datetime.now(UTC), source_url="https://x.kz", service_name_raw=None,
+        content_hash=None, match_confidence=1.0, match_method="exact", city="Астана",
+    )
+    clinic = SimpleNamespace(id=2, name="Клиника")
+    branch = SimpleNamespace(
+        id=3, city="Астана", address="ул. Тест", lat=51.1, lng=71.4,
+        rating=4.7, reviews_count=120,
+    )
+    service = SimpleNamespace(id=4, name_ru="ОАК")
+
+    card = search._build_card(price, clinic, branch, service, None, 1)
+
+    assert card.rating == 4.7
+    assert card.reviews_count == 120
+
+
+def test_should_leave_card_rating_none_without_branch():
+    from types import SimpleNamespace
+
+    price = SimpleNamespace(
+        id=1, price_kzt=1880, duration_min=None, duration_max=None,
+        parsed_at=datetime.now(UTC), source_url="https://x.kz", service_name_raw=None,
+        content_hash=None, match_confidence=1.0, match_method="exact", city="Астана",
+    )
+    clinic = SimpleNamespace(id=2, name="Клиника")
+    service = SimpleNamespace(id=4, name_ru="ОАК")
+
+    card = search._build_card(price, clinic, None, service, None, 1)
+
+    assert card.rating is None
+    assert card.reviews_count is None
