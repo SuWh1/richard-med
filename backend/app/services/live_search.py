@@ -23,13 +23,14 @@ from app.models import RawPriceItem, ServiceAlias
 from app.models.catalog import ServiceCategory
 from app.scrapers.base import RawDocument
 from app.scrapers.base import RawPriceItem as RawItem
-from app.scrapers.doq import API_URL, _CITY_IDS, _TYPE_CATEGORY
+from app.scrapers.doq import _CITY_IDS, _TYPE_CATEGORY, API_URL
 from app.scrapers.http import content_hash
 from app.services.catalog_grow import _ensure_service, _map_category
 from app.services.normalization import canonical_clean
 from app.services.pipeline import (
     _get_or_create_branch,
     _get_or_create_clinic,
+    _get_or_create_doctor,
     _parse_duration,
     _save_raw_document,
     _upsert_price,
@@ -107,6 +108,13 @@ def _cheapest_offers(payload: dict, doq_service_id: int) -> list[dict]:
                 "price": int(price),
                 "source_url": f"https://doq.kz/doctor/{doctor.get('slug', '')}",
                 "doctor": doctor.get("name"),
+                "doctor_id": doctor.get("id"),
+                "doctor_slug": doctor.get("slug"),
+                "doctor_avatar": doctor.get("avatar_url"),
+                "doctor_experience": doctor.get("experience"),
+                "doctor_rating": doctor.get("feedback_score"),
+                "doctor_reviews": doctor.get("feedback_count"),
+                "qualification": svc.get("qualification_display"),
                 "address": branch.get("address"),
                 "lat": location.get("lat"),
                 "lng": location.get("lng"),
@@ -184,7 +192,7 @@ def _persist(
     if canonical_clean(query) != canonical_clean(name):
         _record_alias(session, service.id, query)
 
-    raw_html = '{"source": "live", "service": %s}' % service.id
+    raw_html = f'{{"source": "live", "service": {service.id}}}'
     doc = RawDocument(
         source_name=SOURCE_NAME,
         source_url=f"https://doq.kz/search?q={name}",
@@ -200,6 +208,13 @@ def _persist(
         meta = {
             "doq_service_name": name,
             "doctor": offer["doctor"],
+            "doctor_id": offer["doctor_id"],
+            "doctor_slug": offer["doctor_slug"],
+            "doctor_avatar": offer["doctor_avatar"],
+            "doctor_experience": offer["doctor_experience"],
+            "doctor_rating": offer["doctor_rating"],
+            "doctor_reviews": offer["doctor_reviews"],
+            "qualification": offer["qualification"],
             "city": city,
             "address": offer["address"],
             "lat": offer["lat"],
@@ -221,6 +236,7 @@ def _persist(
         branch = None
         if meta["address"] or (meta["lat"] and meta["lng"]):
             branch = _get_or_create_branch(session, clinic.id, meta, city)
+        doctor_id = _get_or_create_doctor(session, meta)
         duration_min, duration_max = _parse_duration(None)
         item = RawItem(
             source_url=offer["source_url"],
@@ -244,6 +260,7 @@ def _persist(
             duration_max=duration_max,
             city=city,
             now=now,
+            doctor_id=doctor_id,
         )
 
     session.commit()

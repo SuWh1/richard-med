@@ -1,6 +1,6 @@
-from sqlalchemy import func, select
+from sqlalchemy import select
 
-from app.models import ClinicServicePrice, Service, ServiceAlias
+from app.models import ClinicServicePrice, Doctor, Service, ServiceAlias
 from app.services import live_search, search
 
 _NOVEL = "Живой-тест услуга ЪЪЪ"  # unlikely to exist in the seeded catalog
@@ -9,8 +9,13 @@ _NOVEL = "Живой-тест услуга ЪЪЪ"  # unlikely to exist in the s
 def _provider_payload(service_id: int) -> dict:
     def doctor(slug, clinic, price, lat):
         return {
+            "id": 1000 + price,
             "slug": slug,
             "name": f"Доктор {slug}",
+            "avatar_url": f"https://thumbor.doq.kz/{slug}.webp",
+            "experience": 12,
+            "feedback_score": 8.9,
+            "feedback_count": 142,
             "clinic_branches": [
                 {
                     "id": 1,
@@ -26,6 +31,7 @@ def _provider_payload(service_id: int) -> dict:
                     "clinic_branch": 1,
                     "base_price": price + 100,
                     "discount_price": price,
+                    "qualification_display": "Врач высшей категории",
                     "service": {"id": service_id, "name": _NOVEL, "type": "procedure"},
                 }
             ],
@@ -79,6 +85,29 @@ def test_should_persist_a_new_service_and_prices_on_a_live_miss(db_session, monk
     assert len(prices) == 2  # one per clinic
     assert {p.price_kzt for p in prices} == {1900, 2500}
     assert all(p.match_method == "live" for p in prices)
+
+
+def test_should_persist_live_doctor_media_and_link_prices(db_session, monkeypatch):
+    _patch_network(monkeypatch)
+
+    service_id = live_search.live_fetch_doq(db_session, "живой тест ъъъ", "Астана")
+
+    prices = _active_prices_for(db_session, service_id)
+    assert all(p.doctor_id is not None for p in prices)
+
+    doctor = db_session.get(Doctor, prices[0].doctor_id)
+    assert doctor is not None
+    assert doctor.avatar_url == "https://thumbor.doq.kz/a.webp"
+    assert doctor.experience_years == 12
+    assert doctor.rating == 8.9
+    assert doctor.review_count == 142
+
+    cards = search.prices_for_service(db_session, service_id)
+    assert cards[0].doctor_avatar == "https://thumbor.doq.kz/a.webp"
+    assert cards[0].doctor_experience == 12
+    assert cards[0].doctor_rating == 8.9
+    assert cards[0].doctor_reviews == 142
+    assert cards[0].qualification == "Врач высшей категории"
 
 
 def test_should_record_the_query_as_an_alias_so_it_resolves_next_time(db_session, monkeypatch):
