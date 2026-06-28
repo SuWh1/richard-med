@@ -122,11 +122,12 @@ def get_catalog_services(
 @router.get("/unmatched", response_model=UnmatchedPage)
 def get_unmatched_queue(
     status: str = Query("pending", description="Queue status to list"),
+    q: str | None = Query(None, description="Search raw name or suggested candidate"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> UnmatchedPage:
-    return admin.unmatched_queue(db, status=status, limit=limit, offset=offset)
+    return admin.unmatched_queue(db, status=status, q=q, limit=limit, offset=offset)
 
 
 @router.get("/parse-runs", response_model=list[ParseRunSummary])

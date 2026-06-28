@@ -44,6 +44,28 @@ def test_should_list_unmatched_review_queue():
         assert row["status"] == "pending"
 
 
+def test_should_search_unmatched_queue_across_whole_status():
+    base = client.get("/api/v1/admin/unmatched", params={"status": "pending", "limit": 1})
+    assert base.status_code == 200
+    sample = base.json()["items"]
+    if not sample:
+        return  # empty queue in this DB → nothing to search
+    needle = sample[0]["raw_name"].split()[0].lower()
+
+    resp = client.get(
+        "/api/v1/admin/unmatched",
+        params={"status": "pending", "q": needle, "limit": 50},
+    )
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert items, "search should find the row its own raw_name was taken from"
+    assert all(
+        needle in r["raw_name"].lower()
+        or (r["suggested_name"] or "").lower().find(needle) >= 0
+        for r in items
+    )
+
+
 def test_should_list_recent_parse_runs():
     resp = client.get("/api/v1/admin/parse-runs", params={"limit": 5})
     assert resp.status_code == 200

@@ -416,6 +416,7 @@ export interface UnmatchedPage {
 
 export interface UnmatchedParams {
   status?: string;
+  q?: string;
   limit?: number;
   offset?: number;
 }

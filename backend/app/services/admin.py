@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -186,19 +186,34 @@ def catalog_services(
 def unmatched_queue(
     session: Session,
     status: str = "pending",
+    q: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> UnmatchedPage:
     """The review queue: raw scraped names paired with their best catalog candidate.
 
     These are the gray-zone matches the pipeline refused to auto-apply — an operator
-    (or the AI verifier) decides alias-vs-new. Highest confidence first."""
+    (or the AI verifier) decides alias-vs-new. Highest confidence first.
+
+    `q` searches the whole queue (server-side, not just the current page) across both
+    the raw source name and the suggested catalog candidate, case-insensitively."""
     filters = []
     if status:
         filters.append(UnmatchedService.status == status)
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        filters.append(
+            or_(
+                UnmatchedService.raw_name.ilike(needle),
+                Service.name_ru.ilike(needle),
+            )
+        )
 
     total = session.scalar(
-        select(func.count()).select_from(UnmatchedService).where(*filters)
+        select(func.count())
+        .select_from(UnmatchedService)
+        .outerjoin(Service, Service.id == UnmatchedService.suggested_service_id)
+        .where(*filters)
     )
 
     rows = session.execute(

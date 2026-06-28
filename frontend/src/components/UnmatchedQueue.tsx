@@ -3,7 +3,9 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 
 import { fetchUnmatched } from "@/lib/api";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -30,13 +32,16 @@ const STATUSES = [
 
 export function UnmatchedQueue({ busy = false }: { busy?: boolean }) {
   const [status, setStatus] = useState("pending");
+  const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
+  const q = useDebounce(search.trim(), 250);
 
-  useEffect(() => setOffset(0), [status]);
+  useEffect(() => setOffset(0), [status, q]);
 
   const query = useQuery({
-    queryKey: ["unmatched", status, offset],
-    queryFn: () => fetchUnmatched({ status, limit: PAGE_SIZE, offset }),
+    queryKey: ["unmatched", status, q, offset],
+    queryFn: () =>
+      fetchUnmatched({ status, q: q || undefined, limit: PAGE_SIZE, offset }),
     placeholderData: keepPreviousData,
     refetchInterval: busy ? 2000 : false,
   });
@@ -55,18 +60,26 @@ export function UnmatchedQueue({ busy = false }: { busy?: boolean }) {
             Сырое название · кандидат каталога · уверенность · {total.toLocaleString("ru-RU")}
           </p>
         </div>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="h-9 w-[220px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUSES.map((s) => (
-              <SelectItem key={s.value} value={s.value}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск по очереди…"
+            className="h-9 w-[220px]"
+          />
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="h-9 w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUSES.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Table>
@@ -104,7 +117,7 @@ export function UnmatchedQueue({ busy = false }: { busy?: boolean }) {
           {items.length === 0 && !query.isLoading ? (
             <TableRow>
               <TableCell colSpan={3} className="py-6 text-center text-sm text-slate-500">
-                Очередь пуста.
+                {q ? "Ничего не найдено." : "Очередь пуста."}
               </TableCell>
             </TableRow>
           ) : null}
