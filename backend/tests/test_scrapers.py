@@ -5,7 +5,8 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from app.scrapers.base import RawDocument
-from app.scrapers.doq import DoqAdapter, _sweep_url
+from app.core.cities import CITY_NAMES
+from app.scrapers.doq import DoqAdapter, _CITY_IDS, _sweep_url
 from app.scrapers.http import content_hash
 from app.scrapers.helix import HelixAdapter
 from app.scrapers.invitro import InvitroAdapter
@@ -71,6 +72,17 @@ class _FlakyClient:
 
     def close(self) -> None:
         pass
+
+
+def test_should_cover_multiple_doq_cities_within_the_canonical_spine():
+    # DOQ has real per-city doctor data; coverage must extend past Astana/Almaty but
+    # never name a city outside our canonical spine (each needs a map center).
+    assert {"Астана", "Алматы", "Караганда", "Шымкент"} <= set(_CITY_IDS)
+    assert all(city in CITY_NAMES for city in _CITY_IDS)
+
+
+def test_should_have_no_doq_data_for_unsupported_city():
+    assert DoqAdapter().fetch("Атырау") == []
 
 
 def test_should_isolate_doq_fetch_failures_per_page():
@@ -178,6 +190,13 @@ def test_should_parse_helix_cards_with_name_and_price():
     assert cbc.metadata["code"] == "02-005"
 
 
+def test_should_carry_helix_source_category_from_the_page_url():
+    items = HelixAdapter().test_snapshot().sample_items
+    # The snapshot fetches the "популярные анализы" section — its human title must ride
+    # along on every row so the price page can show the source's own category.
+    assert all(i.metadata["category"] == "Популярные анализы" for i in items)
+
+
 def test_should_build_browsable_almaty_helix_source_urls():
     items = HelixAdapter().test_snapshot().sample_items
     # Links must carry the /almaty prefix so the clicked page shows Almaty (₸) prices.
@@ -189,8 +208,26 @@ def test_should_strip_helix_price_to_digits():
     assert all(i.price_raw.isdigit() and int(i.price_raw) > 0 for i in items)
 
 
+def test_should_serve_helix_for_each_per_city_catalog():
+    # helix.ru carries a genuine per-city page for both; source URLs must reflect the city.
+    assert HelixAdapter().fetch("Алматы") is not None
+    doc = RawDocument(
+        source_name="helix",
+        source_url="https://helix.ru/astana/catalog/1-populyarnye-analizy",
+        city="Астана",
+        raw_html=(Path(__file__).parent / "fixtures" / "helix_almaty_populyarnye.html").read_text(encoding="utf-8"),
+        content_hash="x",
+        status_code=200,
+        fetched_at="",
+    )
+    items = HelixAdapter().parse(doc)
+    assert items and all(
+        i.source_url.startswith("https://helix.ru/astana/catalog/") for i in items
+    )
+
+
 def test_should_have_no_helix_data_for_unsupported_city():
-    assert HelixAdapter().fetch("Астана") == []
+    assert HelixAdapter().fetch("Караганда") == []
 
 
 def test_should_parse_invitro_product_anchors():
@@ -217,5 +254,14 @@ def test_should_strip_invitro_english_gloss_and_price_to_digits():
     assert cbc.service_name_raw.endswith("СОЭ)")
 
 
+def test_should_serve_invitro_national_list_across_its_cities():
+    # Unified national pricing → Invitro serves the same list for every city it operates in.
+    from app.scrapers.invitro import SUPPORTED_CITIES
+
+    assert {"Алматы", "Астана", "Караганда", "Шымкент"} <= SUPPORTED_CITIES
+    assert all(city in CITY_NAMES for city in SUPPORTED_CITIES)
+
+
 def test_should_have_no_invitro_data_for_unsupported_city():
-    assert InvitroAdapter().fetch("Караганда") == []
+    # Туркестан is in our canonical spine but Invitro has no presence there.
+    assert InvitroAdapter().fetch("Туркестан") == []

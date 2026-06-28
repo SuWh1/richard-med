@@ -175,6 +175,19 @@ def test_should_persist_kdl_durations_from_json(db_session):
     assert priced  # durations were extracted and stored
 
 
+def test_should_store_source_native_category_on_published_prices(db_session):
+    run_source(db_session, "kdl_olymp", "Астана", adapter=_StubKdlAdapter())
+    # KDL files every analyte under a section ("Гематология", "Биохимия крови"); that
+    # source-native category must ride onto the searchable price row, not be re-derived.
+    categories = {
+        c
+        for (c,) in db_session.query(ClinicServicePrice.source_category)
+        .filter(ClinicServicePrice.id.in_(_run_price_ids(db_session)))
+        .all()
+    }
+    assert categories & {"Гематология", "Биохимия крови"}
+
+
 class _StubDoqAdapter(DoqAdapter):
     """Real DOQ parse/clean, but fetch serves the saved fixture instead of the network."""
 

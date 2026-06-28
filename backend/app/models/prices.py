@@ -20,6 +20,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.catalog import Service
     from app.models.clinics import Clinic, ClinicBranch
+    from app.models.doctors import Doctor
 
 
 class RawDocument(Base):
@@ -76,6 +77,9 @@ class ClinicServicePrice(Base):
     raw_price_item_id: Mapped[int | None] = mapped_column(
         ForeignKey("raw_price_items.id", ondelete="SET NULL")
     )
+    doctor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("doctors.id", ondelete="SET NULL"), index=True
+    )
     # Non-null: the active-price key is (clinic, service, city); a NULL city breaks the
     # upsert's dedup (SQL `city = NULL` is never true) and escapes city-scoped staling.
     city: Mapped[str] = mapped_column(String(64), index=True)
@@ -83,6 +87,7 @@ class ClinicServicePrice(Base):
     duration_min: Mapped[int | None] = mapped_column(Integer)
     duration_max: Mapped[int | None] = mapped_column(Integer)
     service_name_raw: Mapped[str | None] = mapped_column(String(512))
+    source_category: Mapped[str | None] = mapped_column(String(128), index=True)
     content_hash: Mapped[str | None] = mapped_column(String(64))
     match_confidence: Mapped[float] = mapped_column(Float, default=1.0)
     match_method: Mapped[str | None] = mapped_column(String(32))
@@ -93,6 +98,7 @@ class ClinicServicePrice(Base):
     clinic: Mapped["Clinic"] = relationship()
     branch: Mapped["ClinicBranch | None"] = relationship()
     service: Mapped["Service"] = relationship()
+    doctor: Mapped["Doctor | None"] = relationship()
 
 
 class PriceHistory(Base):

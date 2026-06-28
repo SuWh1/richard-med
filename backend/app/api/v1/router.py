@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     analytics,
     auth,
     clinics,
+    doctors,
     search,
     services,
     sources,
@@ -16,6 +17,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(services.router, prefix="/services", tags=["services"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(clinics.router, prefix="/clinics", tags=["clinics"])
+api_router.include_router(doctors.router, prefix="/doctors", tags=["doctors"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 # Admin endpoints (Source Health, Run Parser) require an authenticated admin session.

@@ -39,6 +39,21 @@ def canonical_clean(name: str) -> str:
     return " ".join(text.split())
 
 
+def _discriminating_score(query: str, choice: str, **_kwargs) -> float:
+    """Fuzzy score that won't inflate when the candidate is a tiny token-subset.
+
+    token_set_ratio alone rewards a single shared generic token: "Витамин D" scores
+    ~88% against any "Витамин B6 …" because the common "витамин" carries the match and
+    the discriminating tokens (B6, D) are ignored. Blending with token_sort_ratio — which
+    does penalize the extra/different tokens — forces a real overlap: a short catalog
+    name can only auto-match a long raw name when they genuinely share most of their words.
+    """
+    return min(
+        fuzz.token_set_ratio(query, choice),
+        fuzz.token_sort_ratio(query, choice),
+    )
+
+
 @dataclass(frozen=True)
 class MatchResult:
     service_id: int | None
@@ -86,7 +101,7 @@ class ServiceMatcher:
             return MatchResult(sid, conf, "alias")
 
         best = process.extractOne(
-            cleaned, self._fuzzy_choices.keys(), scorer=fuzz.token_set_ratio
+            cleaned, self._fuzzy_choices.keys(), scorer=_discriminating_score
         )
         if best is not None:
             choice, score, _ = best

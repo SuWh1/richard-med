@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import openpyxl
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Service, ServiceAlias, ServiceCategory
@@ -104,6 +104,22 @@ def import_catalog(session: Session, path: Path = BLUEPRINT_PATH) -> ImportStats
 
     session.flush()
     stats.aliases_seeded, stats.groups_unresolved = seed_aliases(session, path)
+    return stats
+
+
+def ensure_catalog_loaded(
+    session: Session, path: Path = BLUEPRINT_PATH
+) -> ImportStats | None:
+    """Import the catalog from the blueprint Excel only when `services` is empty.
+
+    Idempotent: returns None and does nothing once a catalog exists, so it is safe
+    to call on every startup.
+    """
+    count = session.execute(select(func.count()).select_from(Service)).scalar_one()
+    if count:
+        return None
+    stats = import_catalog(session, path)
+    session.commit()
     return stats
 
 

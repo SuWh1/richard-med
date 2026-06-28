@@ -10,10 +10,12 @@ from app.models import (
     Clinic,
     ClinicBranch,
     ClinicServicePrice,
+    Doctor,
     ParseRun,
     PriceHistory,
     RawDocument,
     RawPriceItem,
+    ServiceCategory,
     UnmatchedService,
 )
 from app.scrapers.base import RawPriceItem as RawItem
@@ -24,6 +26,9 @@ from app.services.normalization import FUZZY_AUTO, ServiceMatcher
 logger = logging.getLogger(__name__)
 # Only auto-save confident matches; 0.75–0.88 "suggest" matches go to the queue (§9).
 MATCH_FLOOR = FUZZY_AUTO
+# Our own coarse enum values; a source "category" equal to one of these (e.g. DOQ's
+# mapped type) is not a real source section, so it isn't kept as the source category.
+_ENUM_CATEGORIES = frozenset(c.value for c in ServiceCategory)
 
 _DURATION_RE = re.compile(r"\d+")
 
@@ -90,6 +95,33 @@ def _get_or_create_branch(
     return branch
 
 
+def _get_or_create_doctor(session: Session, meta: dict) -> int | None:
+    """Upsert a DOQ doctor from the per-price metadata (base fields from the city sweep).
+
+    Deep enrichment (О враче, reviews) is filled later by the doctor_enrich pass; here we
+    only ensure the row exists and keep its base fields current so prices can link to it.
+    """
+    doq_id = meta.get("doctor_id")
+    name = meta.get("doctor")
+    if not isinstance(doq_id, int) or not name:
+        return None
+    doctor = session.scalars(select(Doctor).where(Doctor.doq_id == doq_id)).first()
+    rating = meta.get("doctor_rating")
+    reviews = meta.get("doctor_reviews")
+    experience = meta.get("doctor_experience")
+    if doctor is None:
+        doctor = Doctor(doq_id=doq_id, name=name)
+        session.add(doctor)
+    doctor.name = name
+    doctor.slug = meta.get("doctor_slug") or doctor.slug
+    doctor.avatar_url = meta.get("doctor_avatar") or doctor.avatar_url
+    doctor.experience_years = experience if isinstance(experience, int) else doctor.experience_years
+    doctor.rating = float(rating) if isinstance(rating, (int, float)) else doctor.rating
+    doctor.review_count = reviews if isinstance(reviews, int) else doctor.review_count
+    session.flush()
+    return doctor.id
+
+
 def _save_raw_document(session: Session, source_name: str, doc) -> RawDocument:
     existing = session.scalars(
         select(RawDocument).where(
@@ -129,6 +161,8 @@ def _upsert_price(
     duration_max: int | None,
     city: str,
     now: datetime,
+    doctor_id: int | None = None,
+    source_category: str | None = None,
 ) -> tuple[bool, int | None]:
     """Insert or version a price. Returns (price_id_seen, existing_id_deactivated_or_none).
 
@@ -151,6 +185,8 @@ def _upsert_price(
         existing.match_method = method
         existing.duration_min = duration_min
         existing.duration_max = duration_max
+        existing.doctor_id = doctor_id
+        existing.source_category = source_category
         return existing.id, existing.id
 
     if existing is not None:
@@ -179,12 +215,14 @@ def _upsert_price(
         duration_min=duration_min,
         duration_max=duration_max,
         service_name_raw=item.service_name_raw,
+        source_category=source_category,
         content_hash=content_hash,
         match_confidence=confidence,
         match_method=method,
         source_url=item.source_url,
         parsed_at=now,
         is_active=True,
+        doctor_id=doctor_id,
     )
     session.add(fresh)
     session.flush()
@@ -307,10 +345,15 @@ def run_source(
                 # Chain price APIs (KDL) carry no per-price address — their points come
                 # from the offline branch sync into clinic_branches.
                 meta = item.metadata or {}
+                raw_category = meta.get("category")
+                source_category = (
+                    raw_category if raw_category not in _ENUM_CATEGORIES else None
+                )
                 branch = None
                 if meta.get("address") or (meta.get("lat") and meta.get("lng")):
                     branch = _get_or_create_branch(session, clinic.id, meta, city)
                 branch_id = branch.id if branch else None
+                doctor_id = _get_or_create_doctor(session, meta)
                 key = (clinic.id, result.service_id, city)
 
                 duration_min, duration_max = _parse_duration(item.duration_raw)
@@ -320,11 +363,13 @@ def run_source(
                         duplicate.price_kzt = price
                         duplicate.source_url = item.source_url
                         duplicate.service_name_raw = item.service_name_raw
+                        duplicate.source_category = source_category
                         duplicate.match_confidence = result.confidence
                         duplicate.match_method = result.method
                         duplicate.raw_price_item_id = raw_row.id
                         duplicate.duration_min = duration_min
                         duplicate.duration_max = duration_max
+                        duplicate.doctor_id = doctor_id
                     continue
 
                 price_id, _ = _upsert_price(
@@ -342,6 +387,8 @@ def run_source(
                     duration_max=duration_max,
                     city=city,
                     now=now,
+                    doctor_id=doctor_id,
+                    source_category=source_category,
                 )
                 seen_price_ids.add(price_id)
                 run_prices[key] = session.get(ClinicServicePrice, price_id)

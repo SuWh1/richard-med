@@ -50,6 +50,7 @@ function card(partial: Partial<PriceCard>): PriceCard {
     freshness: "fresh",
     source_url: "https://example.com",
     service_name_raw: null,
+    source_category: null,
     content_hash: null,
     match_confidence: 1,
     match_method: "exact",
