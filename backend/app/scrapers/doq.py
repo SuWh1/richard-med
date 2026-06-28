@@ -23,7 +23,22 @@ _FIXTURE = (
     / "doq_doctors_astana.json"
 )
 
-_CITY_IDS = {"Астана": 1, "Алматы": 3}
+# DOQ city IDs (from api.doq.kz/api/v1/cities/), restricted to cities in our canonical
+# spine (core/cities.py). DOQ also serves Семей, omitted because it is absent from that
+# spine (no map center / KDL coverage). Each city carries genuinely distinct doctors.
+_CITY_IDS = {
+    "Астана": 1,
+    "Алматы": 3,
+    "Караганда": 4,
+    "Шымкент": 5,
+    "Актау": 6,
+    "Актобе": 10,
+    "Павлодар": 12,
+    "Тараз": 13,
+    "Кызылорда": 14,
+    "Усть-Каменогорск": 15,
+    "Кокшетау": 16,
+}
 
 # DOQ's full service catalog (~1000 entries) is exposed per doctor: a single sweep of
 # every doctor in a city yields each one's `services[]` — appointments *and* procedures
@@ -120,6 +135,8 @@ class DoqAdapter(BaseSourceAdapter):
                     continue
                 location = branch.get("location") or {}
                 phones = branch.get("phones") or []
+                city_area = branch.get("city_area") or {}
+                base_price = svc.get("base_price")
                 items.append(
                     RawPriceItem(
                         source_url=f"https://doq.kz/doctor/{doctor.get('slug', '')}",
@@ -136,6 +153,16 @@ class DoqAdapter(BaseSourceAdapter):
                             "lat": location.get("lat"),
                             "lng": location.get("lng"),
                             "phone": phones[0] if phones else None,
+                            "doctor_id": doctor.get("id"),
+                            "doctor_slug": doctor.get("slug"),
+                            "doctor_avatar": doctor.get("avatar_url"),
+                            "doctor_experience": doctor.get("experience"),
+                            "doctor_rating": doctor.get("feedback_score"),
+                            "doctor_reviews": doctor.get("feedback_count"),
+                            "qualification": svc.get("qualification_display"),
+                            "base_price": base_price,
+                            "discount_percent": svc.get("discount_percent") or None,
+                            "district": city_area.get("name"),
                         },
                     )
                 )

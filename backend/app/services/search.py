@@ -63,6 +63,16 @@ class PriceCard:
     content_hash: str | None
     match_confidence: float
     match_method: str | None
+    doctor_id: int | None = None
+    doctor_avatar: str | None = None
+    doctor_experience: int | None = None
+    doctor_rating: float | None = None
+    doctor_reviews: int | None = None
+    qualification: str | None = None
+    district: str | None = None
+    base_price_kzt: int | None = None
+    discount_percent: int | None = None
+    source_category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -306,6 +316,7 @@ def prices_for_service(
     include_stale: bool = False,
     price_min: int | None = None,
     price_max: int | None = None,
+    source_category: str | None = None,
 ) -> list[PriceCard]:
     now = datetime.now(UTC)
     age_days = func.floor(
@@ -336,6 +347,8 @@ def prices_for_service(
         stmt = stmt.where(ClinicServicePrice.price_kzt >= price_min)
     if price_max is not None:
         stmt = stmt.where(ClinicServicePrice.price_kzt <= price_max)
+    if source_category:
+        stmt = stmt.where(ClinicServicePrice.source_category == source_category)
     if not include_stale:
         stmt = stmt.where(age_days <= STALE_DAYS)
 
@@ -346,9 +359,58 @@ def prices_for_service(
     return _sort_cards(cards, sort)
 
 
+def prices_for_doctor(
+    session: Session, doctor_id: int, *, include_stale: bool = False
+) -> list[PriceCard]:
+    """All active services this doctor offers, as price cards (for the doctor page)."""
+    now = datetime.now(UTC)
+    age_days = func.floor(
+        func.extract("epoch", now - ClinicServicePrice.parsed_at) / 86400.0
+    ).cast(Float)
+
+    stmt = (
+        select(
+            ClinicServicePrice,
+            Clinic,
+            ClinicBranch,
+            Service,
+            RawPriceItem.metadata_json,
+            age_days.label("age"),
+        )
+        .join(Clinic, ClinicServicePrice.clinic_id == Clinic.id)
+        .join(Service, ClinicServicePrice.service_id == Service.id)
+        .outerjoin(ClinicBranch, ClinicServicePrice.branch_id == ClinicBranch.id)
+        .outerjoin(RawPriceItem, ClinicServicePrice.raw_price_item_id == RawPriceItem.id)
+        .where(
+            ClinicServicePrice.doctor_id == doctor_id,
+            ClinicServicePrice.is_active.is_(True),
+        )
+    )
+    if not include_stale:
+        stmt = stmt.where(age_days <= STALE_DAYS)
+
+    cards = [
+        _build_card(price, clinic, branch, service, metadata, int(age))
+        for price, clinic, branch, service, metadata, age in session.execute(stmt)
+    ]
+    return _sort_cards(cards, "cheapest")
+
+
 def _doctor_name(metadata: dict | None) -> str | None:
     name = (metadata or {}).get("doctor")
     return name.strip() if isinstance(name, str) and name.strip() else None
+
+
+def _as_int(value: object) -> int | None:
+    return int(value) if isinstance(value, (int, float)) else None
+
+
+def _as_str(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _rating(value: object) -> float | None:
+    return round(float(value), 1) if isinstance(value, (int, float)) else None
 
 
 def _build_card(
@@ -359,6 +421,7 @@ def _build_card(
     metadata: dict | None,
     age_days: int,
 ) -> PriceCard:
+    meta = metadata or {}
     return PriceCard(
         price_id=price.id,
         service_id=service.id,
@@ -366,6 +429,15 @@ def _build_card(
         clinic_id=clinic.id,
         clinic_name=clinic.name,
         doctor_name=_doctor_name(metadata),
+        doctor_id=_as_int(meta.get("doctor_id")),
+        doctor_avatar=_as_str(meta.get("doctor_avatar")),
+        doctor_experience=_as_int(meta.get("doctor_experience")),
+        doctor_rating=_rating(meta.get("doctor_rating")),
+        doctor_reviews=_as_int(meta.get("doctor_reviews")),
+        qualification=_as_str(meta.get("qualification")),
+        district=_as_str(meta.get("district")),
+        base_price_kzt=_as_int(meta.get("base_price")),
+        discount_percent=_as_int(meta.get("discount_percent")),
         branch_id=branch.id if branch else None,
         city=branch.city if branch else price.city,
         address=branch.address if branch else None,
@@ -379,6 +451,7 @@ def _build_card(
         freshness=_freshness(age_days),
         source_url=price.source_url,
         service_name_raw=price.service_name_raw,
+        source_category=price.source_category,
         content_hash=price.content_hash,
         match_confidence=price.match_confidence,
         match_method=price.match_method,

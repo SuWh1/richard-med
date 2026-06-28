@@ -126,7 +126,7 @@ def test_should_skip_live_lookup_for_a_city_outside_doq_coverage(db_session, mon
     monkeypatch.setattr(
         live_search, "_resolve_doq_service", lambda *a: called.__setitem__("n", 1)
     )
-    assert live_search.live_fetch_doq(db_session, "что угодно", "Караганда") is None
+    assert live_search.live_fetch_doq(db_session, "что угодно", "Туркестан") is None
     assert called["n"] == 0
 
 

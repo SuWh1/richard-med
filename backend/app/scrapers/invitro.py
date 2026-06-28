@@ -17,8 +17,18 @@ BASE_URL = "https://invitro.kz"
 # city/ variant 301-redirects here — Invitro KZ publishes one national list (Almaty-priced).
 CATALOG_URL = f"{BASE_URL}/analizes/for-doctors/"
 CLINIC_NAME = "Invitro"
-# Invitro's catalog is Almaty-priced ("Сдать анализы в Алматы" in each row's metrika call).
-SUPPORTED_CITY = "Алматы"
+# Invitro KZ publishes ONE national price list with unified pricing (verified: Astana shows
+# the same prices as Almaty). It operates in these canonical cities (invitro.kz CITY_NAME
+# slugs ∩ core/cities.py); the same national list is served for each so a city the chain
+# actually serves isn't left empty. Almaty-only suburb towns and non-canonical cities
+# (Семей, Уральск, Талдыкорган) are excluded.
+SUPPORTED_CITIES = frozenset(
+    {
+        "Алматы", "Астана", "Актау", "Актобе", "Атырау", "Караганда", "Костанай",
+        "Кызылорда", "Павлодар", "Петропавловск", "Шымкент", "Тараз", "Темиртау",
+        "Усть-Каменогорск",
+    }
+)
 _FIXTURE = (
     Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "invitro_analizes_almaty.html"
 )
@@ -35,7 +45,7 @@ class InvitroAdapter(BaseSourceAdapter):
         return "invitro"
 
     def fetch(self, city: str) -> list[RawDocument]:
-        if city != SUPPORTED_CITY:
+        if city not in SUPPORTED_CITIES:
             return []
         client = self._client or PoliteClient()
         try:
@@ -107,7 +117,7 @@ class InvitroAdapter(BaseSourceAdapter):
         doc = RawDocument(
             source_name=self.identity(),
             source_url=CATALOG_URL,
-            city=SUPPORTED_CITY,
+            city="Алматы",
             raw_html=text,
             content_hash=content_hash(text),
             status_code=200,

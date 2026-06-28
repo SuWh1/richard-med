@@ -12,7 +12,13 @@ run separately so this stays key-free and fast:
 from app.core.cities import CITIES
 from app.db.session import SessionLocal
 from app.scrapers.registry import available_sources
-from app.scripts import embed_services, expand_catalog, import_branches, import_catalog
+from app.scripts import (
+    embed_services,
+    enrich_doctors,
+    expand_catalog,
+    import_branches,
+    import_catalog,
+)
 from app.services.embeddings import get_embedder
 from app.services.pipeline import run_source
 
@@ -24,7 +30,7 @@ def main() -> None:
     print("2/4 embedding catalog (skips if fastembed absent)…")
     embed_services.main()
 
-    print("3/6 parsing prices for every source × city…")
+    print("3/7 parsing prices for every source × city…")
     # Semantic on, so look-alikes are flagged (and never blindly added as duplicates).
     embedder = get_embedder()
     session = SessionLocal()
@@ -42,14 +48,17 @@ def main() -> None:
     finally:
         session.close()
 
-    print("4/6 growing catalog from unmatched + re-parsing…")
+    print("4/7 growing catalog from unmatched + re-parsing…")
     expand_catalog.main()
 
-    print("5/6 embedding new catalog entries…")
+    print("5/7 embedding new catalog entries…")
     embed_services.main()
 
-    print("6/6 importing clinic branches (with coordinates)…")
+    print("6/7 importing clinic branches (with coordinates)…")
     import_branches.main()
+
+    print("7/7 enriching DOQ doctors (О враче + reviews; network, may be slow)…")
+    enrich_doctors.main()
 
     print("setup complete.")
 

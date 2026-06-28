@@ -23,12 +23,21 @@ class PriceCard(BaseModel):
     clinic_id: int
     clinic_name: str
     doctor_name: str | None
+    doctor_id: int | None = None
+    doctor_avatar: str | None = None
+    doctor_experience: int | None = None
+    doctor_rating: float | None = None
+    doctor_reviews: int | None = None
+    qualification: str | None = None
+    district: str | None = None
     branch_id: int | None
     city: str | None
     address: str | None
     lat: float | None
     lng: float | None
     price_kzt: int
+    base_price_kzt: int | None = None
+    discount_percent: int | None = None
     duration_min: int | None
     duration_max: int | None
     parsed_at: datetime
@@ -36,6 +45,7 @@ class PriceCard(BaseModel):
     freshness: str
     source_url: str
     service_name_raw: str | None
+    source_category: str | None = None
     content_hash: str | None
     match_confidence: float
     match_method: str | None

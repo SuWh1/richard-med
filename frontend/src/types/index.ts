@@ -36,12 +36,21 @@ export interface PriceCard {
   clinic_id: number;
   clinic_name: string;
   doctor_name: string | null;
+  doctor_id?: number | null;
+  doctor_avatar?: string | null;
+  doctor_experience?: number | null;
+  doctor_rating?: number | null;
+  doctor_reviews?: number | null;
+  qualification?: string | null;
+  district?: string | null;
   branch_id: number | null;
   city: string | null;
   address: string | null;
   lat: number | null;
   lng: number | null;
   price_kzt: number;
+  base_price_kzt?: number | null;
+  discount_percent?: number | null;
   duration_min: number | null;
   duration_max: number | null;
   parsed_at: string;
@@ -49,9 +58,51 @@ export interface PriceCard {
   freshness: Freshness;
   source_url: string;
   service_name_raw: string | null;
+  source_category: string | null;
   content_hash: string | null;
   match_confidence: number;
   match_method: string | null;
+}
+
+export interface DoctorDetailItem {
+  detail_type: string;
+  detail_type_id: number | null;
+  info: string;
+  year: string | null;
+}
+
+export interface DoctorReview {
+  id: number;
+  score: number | null;
+  text: string | null;
+  text_ru: string | null;
+  service_name: string | null;
+  client_name: string | null;
+  waiting_time: number | null;
+  clinic_reply: string | null;
+  source: string | null;
+  created_at: string | null;
+}
+
+export interface DoctorReviewPage {
+  total: number;
+  items: DoctorReview[];
+}
+
+export interface DoctorProfile {
+  id: number;
+  doq_id: number;
+  slug: string | null;
+  name: string;
+  avatar_url: string | null;
+  experience_years: number | null;
+  rating: number | null;
+  review_count: number | null;
+  gender: string | null;
+  languages: string[] | null;
+  photos: string[] | null;
+  details: DoctorDetailItem[];
+  prices: PriceCard[];
 }
 
 export interface SearchResponse {

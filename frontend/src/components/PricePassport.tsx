@@ -64,6 +64,9 @@ export function PricePassport({ card, onClose }: PricePassportProps) {
               {card.service_name_raw && (
                 <Row label="Исходное название" value={card.service_name_raw} tone="muted" />
               )}
+              {card.source_category && (
+                <Row label="Раздел источника" value={card.source_category} tone="muted" />
+              )}
               <Row label="Цена" value={formatPrice(card.price_kzt)} tone="price" />
               <Row
                 label="Обновлено"

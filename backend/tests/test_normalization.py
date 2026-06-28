@@ -70,6 +70,25 @@ def test_should_return_none_below_threshold(matcher):
     assert result.method == "none"
 
 
+def test_should_not_inflate_match_on_a_shared_generic_token(db_session):
+    """A short catalog name must not auto-match a longer raw name just because they
+    share one generic word — the classic 'Витамин D matches every Витамин X' bug."""
+    vit_d = Service(
+        service_key="svc_vit_d",
+        name_ru="Витамин D",
+        category=ServiceCategory.laboratory,
+    )
+    db_session.add(vit_d)
+    db_session.flush()
+    m = ServiceMatcher(db_session)
+
+    result = m.match("Витамин B6 (пиридоксин) (хроматография)")
+
+    assert result.service_id is None
+    assert result.method == "none"
+    assert result.confidence < 0.75
+
+
 def test_should_semantic_match_when_fuzzy_fails(db_session):
     svc = Service(
         service_key="svc_sem",

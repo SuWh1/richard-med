@@ -64,6 +64,7 @@ def search_services(
     include_stale: bool = False,
     price_min: int | None = Query(None, ge=0),
     price_max: int | None = Query(None, ge=0),
+    source_category: str | None = Query(None, max_length=128),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     def _resolve_and_price() -> tuple:
@@ -77,6 +78,7 @@ def search_services(
                 include_stale=include_stale,
                 price_min=price_min,
                 price_max=price_max,
+                source_category=source_category,
             )
             if found is not None
             else []
