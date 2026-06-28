@@ -187,9 +187,9 @@ def save_service(
         existing.notify_enabled = body.notify_enabled
         existing.updated_at = now
         if existing.baseline_min_price is None:
-            existing.baseline_min_price = current_min
+            existing.baseline_min_price = current
         if existing.last_seen_min_price is None:
-            existing.last_seen_min_price = current_min
+            existing.last_seen_min_price = current
 
     session.commit()
     session.refresh(existing)
