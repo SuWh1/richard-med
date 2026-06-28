@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { signIn } from "@/lib/auth-client";
+import { login } from "@/lib/auth-client";
 import { AuthShell, Field, SubmitButton } from "@/components/auth/AuthShell";
 
 export function LoginPage() {
@@ -15,10 +15,14 @@ export function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = await signIn.email({ email, password });
-    setLoading(false);
-    if (res.error) setError(res.error.message ?? "Не удалось войти");
-    else navigate("/cabinet");
+    try {
+      await login(email, password);
+      navigate("/cabinet");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось войти");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

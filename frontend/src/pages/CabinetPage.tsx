@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { LogOut, Mail, Shield, User } from "lucide-react";
 
-import { signOut } from "@/lib/auth-client";
+import { logout } from "@/lib/auth-client";
 import { useAuth } from "@/lib/useAuth";
 import { AppShell } from "@/components/AppShell";
 
@@ -9,8 +9,8 @@ export function CabinetPage() {
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
 
-  const logout = async () => {
-    await signOut();
+  const onLogout = () => {
+    logout();
     navigate("/");
   };
 
@@ -46,7 +46,7 @@ export function CabinetPage() {
           </div>
 
           <button
-            onClick={logout}
+            onClick={onLogout}
             className="mt-6 flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary"
           >
             <LogOut className="h-4 w-4" /> Выйти

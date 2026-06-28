@@ -1,3 +1,4 @@
+from app.models.auth import User
 from app.models.catalog import Service, ServiceAlias, ServiceCategory
 from app.models.clinics import Clinic, ClinicBranch
 from app.models.prices import (
@@ -9,6 +10,7 @@ from app.models.prices import (
 from app.models.runs import ParseRun, UnmatchedService
 
 __all__ = [
+    "User",
     "Service",
     "ServiceAlias",
     "ServiceCategory",

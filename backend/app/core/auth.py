@@ -1,63 +1,83 @@
-"""Verify Better Auth sessions on the backend.
+"""Native email/password auth: bcrypt hashing + our own HS256 JWT.
 
-The frontend gets a JWT from Better Auth (the `jwt` plugin) and sends it as a Bearer
-token. We verify the signature against Better Auth's JWKS and gate admin endpoints on
-the `role` claim — so /admin/* is protected server-side, not just in the UI.
+The frontend sends the JWT as a Bearer token; we verify it with our secret and gate
+admin endpoints on the `role` claim — so /admin/* is protected server-side, not just
+in the UI.
 """
 
-import os
+from datetime import UTC, datetime, timedelta
 
+import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jwt import PyJWKClient
 
-_JWKS_URL = (
-    os.environ.get("BETTER_AUTH_JWKS_URL") or "http://localhost:3001/api/auth/jwks"
-)
-# Lazy: no network call until the first token is verified.
-_jwk_client = PyJWKClient(_JWKS_URL)
+from app.core.config import settings
+from app.models import User
+
+_ALGO = "HS256"
+_TOKEN_TTL = timedelta(days=30)
 _bearer = HTTPBearer(auto_error=False)
 
 
-def verify_jwt(token: str) -> dict:
-    """Verify a Better Auth JWT against the JWKS. Raises on any failure."""
-    signing_key = _jwk_client.get_signing_key_from_jwt(token).key
-    return jwt.decode(
-        token,
-        signing_key,
-        algorithms=["EdDSA"],
-        options={"verify_aud": False},
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode(), password_hash.encode())
+    except (ValueError, TypeError):
+        return False
+
+
+def role_for_email(email: str) -> str:
+    return "admin" if email.strip().lower() in settings.admin_emails else "user"
+
+
+def create_token(user: User) -> str:
+    now = datetime.now(UTC)
+    return jwt.encode(
+        {
+            "sub": str(user.id),
+            "email": user.email,
+            "role": user.role,
+            "iat": now,
+            "exp": now + _TOKEN_TTL,
+        },
+        settings.AUTH_SECRET,
+        algorithm=_ALGO,
     )
 
 
-def _role_of(claims: dict) -> str | None:
-    role = claims.get("role")
-    if isinstance(role, str):
-        return role
-    user = claims.get("user")
-    if isinstance(user, dict):
-        return user.get("role")
-    return None
+def verify_token(token: str) -> dict:
+    return jwt.decode(token, settings.AUTH_SECRET, algorithms=[_ALGO])
+
+
+def _claims(cred: HTTPAuthorizationCredentials | None) -> dict:
+    if cred is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Требуется авторизация")
+    try:
+        return verify_token(cred.credentials)
+    except Exception as exc:  # noqa: BLE001 — any verification failure is unauthorized
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Недействительный токен"
+        ) from exc
+
+
+def require_user(
+    cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict:
+    """Any signed-in user."""
+    return _claims(cred)
 
 
 def require_admin(
     cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> dict:
-    """FastAPI dependency: a valid Better Auth session with the admin role."""
-    # Local-dev only: open the admin API without a token (pairs with VITE_DEV_ADMIN).
-    # Never set this in production. Off by default → admin endpoints stay protected.
-    if os.environ.get("AUTH_DEV_BYPASS") == "true":
-        return {"role": "admin", "id": "dev"}
-    if cred is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Требуется авторизация")
-    try:
-        claims = verify_jwt(cred.credentials)
-    except Exception as exc:  # noqa: BLE001 — any verification failure is unauthorized
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "Недействительный токен"
-        ) from exc
-    if _role_of(claims) != "admin":
+    """Admin role required."""
+    claims = _claims(cred)
+    if claims.get("role") != "admin":
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Доступ только для администраторов"
         )

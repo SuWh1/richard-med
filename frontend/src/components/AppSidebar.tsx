@@ -9,7 +9,7 @@ import {
   User,
 } from "lucide-react";
 
-import { signOut } from "@/lib/auth-client";
+import { logout } from "@/lib/auth-client";
 import { useAuth } from "@/lib/useAuth";
 import {
   Sidebar,
@@ -43,8 +43,8 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
   // Source Health is admin-only — non-admins never even see the link.
   const items = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
 
-  const logout = async () => {
-    await signOut();
+  const onLogout = () => {
+    logout();
     navigate("/");
   };
 
@@ -95,7 +95,7 @@ export function AppSidebar({ city = "Астана" }: { city?: string }) {
         <SidebarMenu>
           {isAuthenticated ? (
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={logout} tooltip={`Выйти (${user?.email})`}>
+              <SidebarMenuButton onClick={onLogout} tooltip={`Выйти (${user?.email})`}>
                 <LogOut />
                 <span className="truncate">Выйти</span>
               </SidebarMenuButton>

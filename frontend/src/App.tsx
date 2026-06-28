@@ -33,9 +33,6 @@ const LoginPage = lazy(() =>
 const SignupPage = lazy(() =>
   import("@/pages/auth/SignupPage").then((m) => ({ default: m.SignupPage })),
 );
-const VerifyEmailPage = lazy(() =>
-  import("@/pages/auth/VerifyEmailPage").then((m) => ({ default: m.VerifyEmailPage })),
-);
 const CabinetPage = lazy(() =>
   import("@/pages/CabinetPage").then((m) => ({ default: m.CabinetPage })),
 );
@@ -55,7 +52,6 @@ function AnimatedRoutes() {
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
-        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route element={<RequireAuth />}>
           <Route path="/cabinet" element={<CabinetPage />} />
         </Route>

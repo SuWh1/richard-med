@@ -33,7 +33,7 @@ async function getJson<T>(path: string, params: Record<string, unknown>): Promis
     }
   }
   // Admin endpoints are JWT-protected on the backend.
-  const headers = path.startsWith("/admin") ? await authHeader() : undefined;
+  const headers = path.startsWith("/admin") ? authHeader() : undefined;
   const response = await fetch(`${BASE_URL}${path}?${query.toString()}`, { headers });
   if (!response.ok) {
     throw new Error(`Запрос не выполнен (${response.status})`);
@@ -76,10 +76,12 @@ export function fetchClinicServices(clinicId: number): Promise<ClinicServiceRow[
 export function fetchCompare(
   serviceId: number,
   clinicIds: number[],
+  city?: string | null,
 ): Promise<CompareResult> {
   return getJson<CompareResult>("/search/compare", {
     service_id: serviceId,
     clinic_ids: clinicIds.join(","),
+    city,
   });
 }
 
@@ -118,7 +120,7 @@ export async function triggerRun(source: string | null, city: string): Promise<R
   if (source) query.set("source", source);
   const response = await fetch(`${BASE_URL}/admin/parsers/run?${query.toString()}`, {
     method: "POST",
-    headers: await authHeader(),
+    headers: authHeader(),
   });
   if (!response.ok) {
     throw new Error(`Не удалось запустить парсер (${response.status})`);

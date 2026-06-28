@@ -1,11 +1,6 @@
-import { authClient } from "./auth-client";
+import { useQuery } from "@tanstack/react-query";
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  name?: string | null;
-  role?: string | null;
-}
+import { type AuthUser, fetchMe, getToken } from "./auth-client";
 
 export interface AuthState {
   user: AuthUser | null;
@@ -14,26 +9,21 @@ export interface AuthState {
   isAdmin: boolean;
 }
 
-/** Single source of truth for auth in the UI. Wraps Better Auth's session so the
- *  rest of the app depends on a small, mockable shape (role-based admin check). */
+/** Single source of truth for auth in the UI: fetches /auth/me from the stored token. */
 export function useAuth(): AuthState {
-  const { data, isPending } = authClient.useSession();
+  const token = getToken();
+  const { data, isPending } = useQuery({
+    queryKey: ["me", token],
+    queryFn: fetchMe,
+    enabled: token !== null,
+    retry: false,
+    staleTime: 60_000,
+  });
 
-  // Local-dev escape hatch: with VITE_DEV_ADMIN=true you get an admin session without
-  // running the auth server. Dead code in production builds (import.meta.env.DEV=false).
-  if (import.meta.env.DEV && import.meta.env.VITE_DEV_ADMIN === "true") {
-    return {
-      user: { id: "dev", email: "dev@local", name: "Dev Admin", role: "admin" },
-      isPending: false,
-      isAuthenticated: true,
-      isAdmin: true,
-    };
-  }
-
-  const user = (data?.user as AuthUser | undefined) ?? null;
+  const user = token !== null ? (data ?? null) : null;
   return {
     user,
-    isPending,
+    isPending: token !== null && isPending,
     isAuthenticated: user !== null,
     isAdmin: user?.role === "admin",
   };

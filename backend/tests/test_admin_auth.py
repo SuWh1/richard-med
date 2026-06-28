@@ -1,8 +1,8 @@
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from app.core import auth as authmod
-from app.core.auth import require_admin
+from app.core.auth import create_token, require_admin
+from app.models import User
 
 
 def _client() -> TestClient:
@@ -15,9 +15,12 @@ def _client() -> TestClient:
     return TestClient(app)
 
 
+def _token(role: str) -> str:
+    return create_token(User(id=1, email="x@y.z", password_hash="", name=None, role=role))
+
+
 def test_should_reject_request_without_a_token():
-    resp = _client().get("/protected")
-    assert resp.status_code == 401
+    assert _client().get("/protected").status_code == 401
 
 
 def test_should_reject_an_invalid_token():
@@ -25,20 +28,16 @@ def test_should_reject_an_invalid_token():
     assert resp.status_code == 401
 
 
-def test_should_forbid_a_non_admin(monkeypatch):
-    monkeypatch.setattr(authmod, "verify_jwt", lambda _t: {"role": "user"})
-    resp = _client().get("/protected", headers={"Authorization": "Bearer ok"})
+def test_should_forbid_a_non_admin():
+    resp = _client().get(
+        "/protected", headers={"Authorization": f"Bearer {_token('user')}"}
+    )
     assert resp.status_code == 403
 
 
-def test_should_allow_an_admin(monkeypatch):
-    monkeypatch.setattr(authmod, "verify_jwt", lambda _t: {"role": "admin"})
-    resp = _client().get("/protected", headers={"Authorization": "Bearer ok"})
+def test_should_allow_an_admin():
+    resp = _client().get(
+        "/protected", headers={"Authorization": f"Bearer {_token('admin')}"}
+    )
     assert resp.status_code == 200
     assert resp.json()["role"] == "admin"
-
-
-def test_should_read_role_from_nested_user_claim(monkeypatch):
-    monkeypatch.setattr(authmod, "verify_jwt", lambda _t: {"user": {"role": "admin"}})
-    resp = _client().get("/protected", headers={"Authorization": "Bearer ok"})
-    assert resp.status_code == 200

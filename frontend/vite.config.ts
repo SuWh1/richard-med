@@ -13,9 +13,5 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: {
-      // Local dev: forward auth calls to the local Better Auth server (npm run auth).
-      "/api/auth": "http://localhost:3001",
-    },
   },
 });

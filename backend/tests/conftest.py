@@ -17,10 +17,13 @@ def _bypass_admin_auth():
 
 @pytest.fixture
 def db_session():
-    """A session wrapped in a transaction that is rolled back after each test."""
+    """A session wrapped in a transaction that is rolled back after each test.
+
+    `create_savepoint` makes the endpoint's own commits roll back too, so HTTP tests
+    that POST (e.g. /auth/signup) stay isolated."""
     connection = engine.connect()
     transaction = connection.begin()
-    session = Session(bind=connection)
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
     try:
         yield session
     finally:

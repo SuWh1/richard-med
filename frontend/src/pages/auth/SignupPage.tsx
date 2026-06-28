@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { emailOtp, signUp } from "@/lib/auth-client";
+import { signup } from "@/lib/auth-client";
 import { AuthShell, Field, SubmitButton } from "@/components/auth/AuthShell";
 
 export function SignupPage() {
@@ -16,16 +16,14 @@ export function SignupPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = await signUp.email({ email, password, name: name || email });
-    if (res.error) {
+    try {
+      await signup(email, password, name || undefined);
+      navigate("/cabinet");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось зарегистрироваться");
+    } finally {
       setLoading(false);
-      setError(res.error.message ?? "Не удалось зарегистрироваться");
-      return;
     }
-    // Email verification by code (OTP).
-    await emailOtp.sendVerificationOtp({ email, type: "email-verification" });
-    setLoading(false);
-    navigate(`/verify-email?email=${encodeURIComponent(email)}`);
   };
 
   return (

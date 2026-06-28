@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     # Min seconds between verify calls, to respect free-tier RPM (15 RPM → 4s; 0 = off).
     GEMINI_MIN_INTERVAL_SEC: float = 4.5
 
+    # Auth: signs our own JWTs; admin role is granted to these emails on sign-up.
+    AUTH_SECRET: str = "dev-secret-change-me-to-a-long-random-value-in-prod"
+    ADMIN_EMAILS: str = "aidyn.fatikh@gmail.com,apasdauren70@gmail.com"
+
+    @property
+    def admin_emails(self) -> set[str]:
+        return {e.strip().lower() for e in self.ADMIN_EMAILS.split(",") if e.strip()}
+
     @property
     def database_url(self) -> str:
         return (
