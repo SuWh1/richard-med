@@ -92,10 +92,11 @@ def search_services(
 
     resolved, suggestions, cards = _resolve_and_price()
 
-    # On a miss, try a live DOQ lookup for the exact query: it persists the service and
-    # its prices to the DB (source-backed, auditable), then we re-resolve so the user
-    # gets real cards now. Best-effort and time-boxed — failure leaves the empty result.
-    if not cards and live_search.live_fetch_doq(db, q, city) is not None:
+    # On a thin result (0 or 1 cards), try a live DOQ lookup for the exact query: it
+    # persists the service and its prices to the DB (source-backed, auditable), then we
+    # re-resolve so the user gets real cards now. Best-effort and time-boxed — failure
+    # leaves the existing result untouched.
+    if len(cards) <= 1 and live_search.live_fetch_doq(db, q, city) is not None:
         resolved, suggestions, cards = _resolve_and_price()
 
     return SearchResponse(
