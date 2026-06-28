@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import urlencode
 
 import httpx
 
@@ -20,33 +20,30 @@ _FIXTURE = (
     Path(__file__).resolve().parents[2]
     / "tests"
     / "fixtures"
-    / "doq_doctors_terapevt_astana.json"
+    / "doq_doctors_astana.json"
 )
 
 _CITY_IDS = {"Астана": 1, "Алматы": 3}
 
-# DOQ aggregates many clinics; a doctor visit price lives per (doctor, service, branch).
-# We scrape a curated set of common specializations rather than the full 1000+ catalog.
-SPECIALIZATIONS = {
-    97: "Терапевт",
-    178: "Педиатр",
-    20: "Гинеколог",
-    84: "Невролог",
-    26: "Кардиолог",
-    9: "Эндокринолог",
-    52: "Уролог",
-    6: "Дерматолог",
-    85: "Офтальмолог",
+# DOQ's full service catalog (~1000 entries) is exposed per doctor: a single sweep of
+# every doctor in a city yields each one's `services[]` — appointments *and* procedures
+# (УЗИ, рентген, флюорография, ЭКГ, …) — so we no longer crawl a curated specialization
+# subset. Each priced offer carries a `clinic_branch` resolved from the expanded list.
+_PAGE_SIZE = 100
+_MAX_PAGES = 40  # ~2k doctors/city today; cap guards against a runaway loop.
+
+# DOQ tags each catalog service with a coarse type; map it to our category enum so
+# procedures aren't filed under doctor visits. Diagnostic vs procedure is then refined
+# downstream by service-name keywords (catalog_grow).
+_TYPE_CATEGORY = {
+    "initial-appointment": "приём врача",
+    "procedure": "процедура",
 }
 
-_PAGE_SIZE = 50
-_MAX_PAGES = 4
 
-
-def _query_url(city_id: int, service_id: int, *, limit: int = _PAGE_SIZE, offset: int = 0) -> str:
+def _sweep_url(city_id: int, *, limit: int = _PAGE_SIZE, offset: int = 0) -> str:
     params = {
         "city": city_id,
-        "service": service_id,
         "expand": "services,clinic_branches",
         "limit": limit,
         "offset": offset,
@@ -54,14 +51,10 @@ def _query_url(city_id: int, service_id: int, *, limit: int = _PAGE_SIZE, offset
     return f"{API_URL}?{urlencode(params)}"
 
 
-def _target_service_id(source_url: str) -> int | None:
-    values = parse_qs(urlparse(source_url).query).get("service")
-    return int(values[0]) if values else None
-
-
 class DoqAdapter(BaseSourceAdapter):
-    """DOQ doctor-visit prices via its JSON API. Each doctor's `services[]` carries
-    base/discount price and a `clinic_branch` resolved from the expanded branch list."""
+    """DOQ prices via its JSON API. A city sweep returns every doctor with their full
+    `services[]` (appointments + procedures); each offer carries base/discount price and
+    a `clinic_branch` resolved from the expanded branch list."""
 
     def __init__(self, client: PoliteClient | None = None):
         self._client = client
@@ -76,49 +69,48 @@ class DoqAdapter(BaseSourceAdapter):
         client = self._client or PoliteClient()
         docs: list[RawDocument] = []
         try:
-            for service_id in SPECIALIZATIONS:
-                for page in range(_MAX_PAGES):
-                    url = _query_url(city_id, service_id, offset=page * _PAGE_SIZE)
-                    try:
-                        response = client.get(url)
-                    except httpx.HTTPError as exc:
-                        # One flaky page must not lose the other specializations: skip the
-                        # rest of this one and keep collecting (Rule: isolate failures).
-                        logger.warning(
-                            "doq fetch failed for service=%s page=%s (%s)",
-                            service_id,
-                            page,
-                            type(exc).__name__,
-                        )
-                        break
-                    text = response.text
-                    docs.append(
-                        RawDocument(
-                            source_name=self.identity(),
-                            source_url=url,
-                            city=city,
-                            raw_html=text,
-                            content_hash=content_hash(text),
-                            status_code=response.status_code,
-                            fetched_at="",
-                        )
+            for page in range(_MAX_PAGES):
+                url = _sweep_url(city_id, offset=page * _PAGE_SIZE)
+                try:
+                    response = client.get(url)
+                except httpx.HTTPError as exc:
+                    # One flaky page must not lose the rest of the sweep: offsets are
+                    # deterministic, so skip it and keep paging (Rule: isolate failures).
+                    logger.warning(
+                        "doq fetch failed for page=%s (%s)", page, type(exc).__name__
                     )
-                    if response.json().get("next") is None:
-                        break
+                    continue
+                text = response.text
+                docs.append(
+                    RawDocument(
+                        source_name=self.identity(),
+                        source_url=url,
+                        city=city,
+                        raw_html=text,
+                        content_hash=content_hash(text),
+                        status_code=response.status_code,
+                        fetched_at="",
+                    )
+                )
+                payload = response.json()
+                if payload.get("next") is None or not payload.get("results"):
+                    break
         finally:
             if self._client is None:
                 client.close()
         return docs
 
     def parse(self, raw_doc: RawDocument) -> list[RawPriceItem]:
-        target = _target_service_id(raw_doc.source_url)
         payload = json.loads(raw_doc.raw_html)
         items: list[RawPriceItem] = []
         for doctor in payload.get("results", []):
             branches = {b["id"]: b for b in doctor.get("clinic_branches", [])}
             for svc in doctor.get("services", []):
+                if not svc.get("is_active", True):
+                    continue
                 service = svc.get("service") or {}
-                if target is not None and service.get("id") != target:
+                name = service.get("name")
+                if not name:
                     continue
                 branch = branches.get(svc.get("clinic_branch"))
                 if branch is None:
@@ -128,19 +120,16 @@ class DoqAdapter(BaseSourceAdapter):
                     continue
                 location = branch.get("location") or {}
                 phones = branch.get("phones") or []
-                # Emit our canonical specialization label (bridged to the catalog's
-                # "Прием <specialist>" entries via seeded aliases) and keep DOQ's own
-                # free-form service name as evidence in metadata.
-                label = SPECIALIZATIONS.get(target) or service.get("name", "")
                 items.append(
                     RawPriceItem(
                         source_url=f"https://doq.kz/doctor/{doctor.get('slug', '')}",
                         clinic_raw=branch.get("name"),
-                        service_name_raw=label,
+                        service_name_raw=name,
                         price_raw=str(price),
                         metadata={
-                            "specialization": label,
-                            "doq_service_name": service.get("name"),
+                            "doq_service_name": name,
+                            "doq_type": service.get("type"),
+                            "category": _TYPE_CATEGORY.get(service.get("type")),
                             "doctor": doctor.get("name"),
                             "city": raw_doc.city,
                             "address": branch.get("address"),
@@ -152,8 +141,9 @@ class DoqAdapter(BaseSourceAdapter):
                 )
         return items
 
-    def default_category(self) -> str:
-        return "приём врача"  # DOQ aggregates doctor visits
+    def default_category(self) -> str | None:
+        # DOQ now spans every category; per-row type/keywords decide. No blanket fallback.
+        return None
 
     def clean(self, raw_item: RawPriceItem) -> RawPriceItem:
         digits = "".join(ch for ch in (raw_item.price_raw or "") if ch.isdigit())
@@ -170,7 +160,7 @@ class DoqAdapter(BaseSourceAdapter):
         text = _FIXTURE.read_text(encoding="utf-8")
         doc = RawDocument(
             source_name=self.identity(),
-            source_url=_query_url(1, 97),
+            source_url=_sweep_url(1),
             city="Астана",
             raw_html=text,
             content_hash=content_hash(text),

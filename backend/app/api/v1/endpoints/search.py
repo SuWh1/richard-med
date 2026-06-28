@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.clinics import CompareResult
 from app.schemas.search import CityOut, MapPin, PriceCard, SearchResponse
-from app.services import clinics, search
+from app.services import clinics, live_search, search
 
 router = APIRouter()
 
@@ -66,18 +66,31 @@ def search_services(
     price_max: int | None = Query(None, ge=0),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
-    resolved, suggestions = search.resolve_query(db, q, category=category)
-    cards = []
-    if resolved is not None:
-        cards = search.prices_for_service(
-            db,
-            resolved.id,
-            city=city,
-            sort=sort,
-            include_stale=include_stale,
-            price_min=price_min,
-            price_max=price_max,
+    def _resolve_and_price() -> tuple:
+        found, sugg = search.resolve_query(db, q, category=category)
+        rows = (
+            search.prices_for_service(
+                db,
+                found.id,
+                city=city,
+                sort=sort,
+                include_stale=include_stale,
+                price_min=price_min,
+                price_max=price_max,
+            )
+            if found is not None
+            else []
         )
+        return found, sugg, rows
+
+    resolved, suggestions, cards = _resolve_and_price()
+
+    # On a miss, try a live DOQ lookup for the exact query: it persists the service and
+    # its prices to the DB (source-backed, auditable), then we re-resolve so the user
+    # gets real cards now. Best-effort and time-boxed — failure leaves the empty result.
+    if not cards and live_search.live_fetch_doq(db, q, city) is not None:
+        resolved, suggestions, cards = _resolve_and_price()
+
     return SearchResponse(
         query=q,
         resolved_service=resolved,

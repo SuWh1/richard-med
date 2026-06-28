@@ -17,12 +17,12 @@ from app.scrapers.base import (
     SnapshotResult,
 )
 from app.scrapers.base import RawDocument as RawDoc
-from app.scrapers.doq import DoqAdapter, _query_url
+from app.scrapers.doq import DoqAdapter, _sweep_url
 from app.scrapers.http import content_hash
 from app.scrapers.kdl_olymp import KdlOlympAdapter
 from app.services.pipeline import _parse_duration, run_source
 
-_FIXTURE = Path(__file__).parent / "fixtures" / "doq_doctors_terapevt_astana.json"
+_FIXTURE = Path(__file__).parent / "fixtures" / "doq_doctors_astana.json"
 _KDL_FIXTURE = Path(__file__).parent / "fixtures" / "kdl_analysis_data_astana.json"
 
 
@@ -183,7 +183,7 @@ class _StubDoqAdapter(DoqAdapter):
         return [
             RawDoc(
                 source_name=self.identity(),
-                source_url=_query_url(1, 97),
+                source_url=_sweep_url(1),
                 city=city,
                 raw_html=text,
                 content_hash=content_hash(text),

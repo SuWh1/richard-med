@@ -11,7 +11,12 @@ from app.services.llm_verify import TransientVerifyError
 
 def test_should_default_known_lab_source_to_laboratory():
     assert _source_default_category("kdl_olymp") == ServiceCategory.laboratory
-    assert _source_default_category("doq") == ServiceCategory.doctor_visit
+
+
+def test_should_not_force_a_default_category_for_multi_category_doq():
+    # DOQ now spans appointments + procedures + diagnostics, so it sets no blanket
+    # fallback — each row's type/keywords decide (keyword-less rows quarantine to other).
+    assert _source_default_category("doq") == ServiceCategory.other
 
 
 def test_should_default_unknown_source_to_other():

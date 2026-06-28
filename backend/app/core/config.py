@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     # Min seconds between verify calls, to respect free-tier RPM (15 RPM → 4s; 0 = off).
     GEMINI_MIN_INTERVAL_SEC: float = 4.5
 
+    # Live on-miss lookup: when a search finds no DB prices, fetch the single queried
+    # service from DOQ's public API, persist it as normal source-backed records, and
+    # return it in the same response. Time-boxed and best-effort — a failure falls back
+    # to the normal empty result, so search never hangs. DOQ only (KDL has no per-service
+    # query); never bypasses the DB write, so results stay auditable (Price Passport).
+    LIVE_FALLBACK_ENABLED: bool = True
+    LIVE_FALLBACK_TIMEOUT_SEC: float = 3.0
+
     # Auth: signs our own JWTs; admin role is granted to these emails on sign-up.
     AUTH_SECRET: str = "dev-secret-change-me-to-a-long-random-value-in-prod"
     ADMIN_EMAILS: str = "aidyn.fatikh@gmail.com,apasdauren70@gmail.com"

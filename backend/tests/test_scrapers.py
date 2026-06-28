@@ -1,12 +1,31 @@
+import json
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from app.scrapers.doq import SPECIALIZATIONS, DoqAdapter
+from app.scrapers.base import RawDocument
+from app.scrapers.doq import DoqAdapter, _sweep_url
+from app.scrapers.http import content_hash
 from app.scrapers.helix import HelixAdapter
 from app.scrapers.invitro import InvitroAdapter
 from app.scrapers.kdl_olymp import KdlOlympAdapter
 from app.scrapers.registry import available_sources, get_adapter
+
+
+def _doq_fixture_doc() -> RawDocument:
+    text = (Path(__file__).parent / "fixtures" / "doq_doctors_astana.json").read_text(
+        encoding="utf-8"
+    )
+    return RawDocument(
+        source_name="doq",
+        source_url=_sweep_url(1),
+        city="Астана",
+        raw_html=text,
+        content_hash=content_hash(text),
+        status_code=200,
+        fetched_at="",
+    )
 
 
 class _FakeResponse:
@@ -17,31 +36,51 @@ class _FakeResponse:
         return {"results": [], "next": None}
 
 
+class _PagedResponse:
+    """One results page; reports a `next` so the sweep keeps paging up to `last`."""
+
+    def __init__(self, offset: int, last: int):
+        self.status_code = 200
+        self._offset = offset
+        self._last = last
+
+    @property
+    def text(self) -> str:
+        return json.dumps(self._payload())
+
+    def json(self) -> dict:
+        return self._payload()
+
+    def _payload(self) -> dict:
+        nxt = None if self._offset >= self._last else "next"
+        return {"results": [{"id": self._offset}], "next": nxt}
+
+
 class _FlakyClient:
-    """Raises for chosen specialization ids; serves an empty page otherwise."""
+    """Serves paged sweep responses but raises for chosen offsets."""
 
-    def __init__(self, fail_service_ids: set[int]):
-        self._fail = fail_service_ids
+    def __init__(self, fail_offsets: set[int], last: int):
+        self._fail = fail_offsets
+        self._last = last
 
-    def get(self, url: str) -> _FakeResponse:
-        service_id = int(parse_qs(urlparse(url).query)["service"][0])
-        if service_id in self._fail:
+    def get(self, url: str) -> _PagedResponse:
+        offset = int(parse_qs(urlparse(url).query).get("offset", ["0"])[0])
+        if offset in self._fail:
             raise httpx.ConnectError("boom")
-        return _FakeResponse()
+        return _PagedResponse(offset, self._last)
 
     def close(self) -> None:
         pass
 
 
-def test_should_isolate_doq_fetch_failures_per_specialization():
-    # The first specialization's request fails; the other eight must still be fetched.
-    failing = next(iter(SPECIALIZATIONS))
-    adapter = DoqAdapter(client=_FlakyClient(fail_service_ids={failing}))
+def test_should_isolate_doq_fetch_failures_per_page():
+    # The first sweep page fails; offsets are deterministic, so later pages still load.
+    adapter = DoqAdapter(client=_FlakyClient(fail_offsets={0}, last=200))
 
     docs = adapter.fetch("Астана")
 
-    assert len(docs) == len(SPECIALIZATIONS) - 1
-    assert all(f"service={failing}&" not in d.source_url for d in docs)
+    assert len(docs) == 2  # offsets 100 and 200 survive; offset 0 was skipped
+    assert all("offset=0&" not in d.source_url for d in docs)
 
 
 def test_should_parse_kdl_json_rows():
@@ -73,25 +112,33 @@ def test_should_strip_kdl_price_to_digits():
     assert all(item.price_raw.isdigit() for item in items)
 
 
-def test_should_extract_doq_visit_prices_for_target_specialization():
+def test_should_extract_doq_prices_with_real_service_name():
     result = DoqAdapter().test_snapshot()
     assert result.item_count >= 1
     item = result.sample_items[0]
     assert item.price_raw.isdigit() and int(item.price_raw) > 0
     assert item.clinic_raw
-    # Emits our canonical label (alias-matchable to "Прием терапевта"), keeps DOQ's
-    # own service name as evidence.
-    assert item.service_name_raw == "Терапевт"
-    assert item.metadata["specialization"] == "Терапевт"
-    assert item.metadata["doq_service_name"]
+    # The raw service name is DOQ's own (matched/grown against the catalog downstream),
+    # not a hand-curated specialization label.
+    assert item.service_name_raw == item.metadata["doq_service_name"]
     assert item.metadata["lat"] and item.metadata["lng"]
 
 
-def test_should_filter_doq_services_to_queried_specialization():
-    # The terapevt query returns doctors whose services include procedures; only the
-    # terapevt visit (service id 97) should survive the parse.
-    items = DoqAdapter().test_snapshot().sample_items
-    assert all(i.metadata["specialization"] == "Терапевт" for i in items)
+def test_should_parse_doq_diagnostic_procedures_not_just_visits():
+    # The old adapter crawled 9 doctor specializations, so diagnostics like Флюорография
+    # were missed entirely. A full doctor sweep now surfaces them.
+    items = DoqAdapter().parse(_doq_fixture_doc())
+    flu = [i for i in items if i.service_name_raw == "Флюорография"]
+    assert flu, "fluorography must now be parsed from DOQ"
+    assert flu[0].metadata["category"] == "процедура"
+    assert flu[0].metadata["doq_type"] == "procedure"
+
+
+def test_should_skip_doq_offers_without_a_price():
+    # The fixture includes an appointment offer with a null price; it must be dropped.
+    items = DoqAdapter().parse(_doq_fixture_doc())
+    assert all(i.price_raw for i in items)
+    assert all(i.metadata["doq_service_name"] != "Рентгенолог" for i in items)
 
 
 def test_should_parse_kdl_branches_from_cabinet_json():
